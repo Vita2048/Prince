@@ -642,7 +642,12 @@ function keyed(keys,t){ // keys: [[time,pose],...]
   for(let i=1;i<keys.length;i++){ if(t<=keys[i][0]){ const [t0,p0]=keys[i-1],[t1,p1]=keys[i]; const u=(t-t0)/(t1-t0); return lerpPose(p0,p1,u*u*(3-2*u)); } }
   return keys[keys.length-1][1];
 }
-function cycle(keys,ph){ const n=keys.length, f=((ph%1)+1)%1*n, i=Math.floor(f); return lerpPose(keys[i],keys[(i+1)%n],f-i); }
+function cycle(keys,ph){
+  const n=keys.length,f=((ph%1)+1)%1*n,i=Math.floor(f),u=f-i,o={};
+  // Periodic cubic interpolation keeps limb velocity continuous at stride keys.
+  for(const k of PK){const a=keys[(i+n-1)%n][k],b=keys[i][k],c=keys[(i+1)%n][k],d=keys[(i+2)%n][k];o[k]=.5*((2*b)+(-a+c)*u+(2*a-5*b+4*c-d)*u*u+(-a+3*b-3*c+d)*u*u*u);}
+  o.gnd=clamp(o.gnd,0,1);return o;
+}
 
 const PS={
  stand:  P({tor:2,fT:4,fS:0,bT:-4,bS:-3,fU:6,fF:14,bU:-5,bF:6}),
@@ -666,7 +671,7 @@ const PS={
  hang:  P({tor:-4,fT:6,fS:-6,bT:-6,bS:-18,fU:178,fF:180,bU:175,bF:179,gnd:0,hy:29}),
  hang2: P({tor:-2,fT:10,fS:-2,bT:-10,bS:-24,fU:177,fF:180,bU:176,bF:180,gnd:0,hy:29}),
  pull:  P({tor:10,fT:8,fS:-12,bT:-4,bS:-22,fU:28,fF:6,bU:22,bF:4,gnd:0,hy:30}),
- knee:  P({tor:38,fT:100,fS:-8,bT:8,bS:-25,fU:12,fF:4,bU:5,bF:0,gnd:0,hy:9}),
+ knee:  P({tor:52,fT:103,fS:-18,bT:20,bS:-38,fU:12,fF:4,bU:5,bF:0,gnd:0,hy:5}),
  grab:  P({tor:40,fT:80,fS:-40,bT:55,bS:-75,fU:72,fF:82,bU:30,bF:40}),
  raise: P({tor:-4,fT:8,fS:0,bT:-8,bS:-4,fU:168,fF:176,bU:-10,bF:10,sw:178}),
  drink: P({tor:-8,head:-14,fT:4,fS:0,bT:-4,bS:-3,fU:96,fF:198,bU:-6,bF:6}),
@@ -721,8 +726,69 @@ function skeleton(e,p){
   S.eF=V(S.sh,p.fU,KB.ua); S.hF=V(S.eF,p.fF,KB.fa);
   S.eB=V(S.shB,p.bU,KB.ua); S.hB=V(S.eB,p.bF,KB.fa);
   S.torDir=[Math.sin(p.tor*DEG)*d,-Math.cos(p.tor*DEG)];
+  applyClimbingContacts(S,e);
   return S;
 }
+
+const easeContact=u=>{u=clamp(u,0,1);return u*u*(3-2*u);};
+function solveArm(root,target,bend){
+  const dx=target[0]-root[0],dy=target[1]-root[1],distance=Math.hypot(dx,dy)||.001;
+  const reach=clamp(distance,.05,KB.ua+KB.fa-.01),ux=dx/distance,uy=dy/distance;
+  const along=(KB.ua*KB.ua-KB.fa*KB.fa+reach*reach)/(2*reach),side=Math.sqrt(Math.max(0,KB.ua*KB.ua-along*along));
+  return {elbow:[root[0]+ux*along-uy*side*bend,root[1]+uy*along+ux*side*bend],hand:[root[0]+ux*reach,root[1]+uy*reach]};
+}
+function applyClimbingContacts(S,e){
+  const isClimb=e.st==='climb',isHang=e.st==='hang',isRise=e.st==='rise';
+  const ledge=isClimb?e.climb:e.hang;if(!ledge||!(isClimb||isHang||isRise))return;
+  const u=isClimb?(ledge.rev?1-clamp(e.t/.95,0,1):clamp(e.t/.95,0,1)):0;
+  const arrival=isRise?easeContact((e.t/.14-.5)/.5):1;
+  // Both hands bear weight first; the rear hand releases before the lead hand.
+  const weights={F:arrival*(1-easeContact((u-.64)/.2)),B:arrival*(1-easeContact((u-.52)/.18))};
+  const targets={F:[ledge.edgeX+S.d*1.1,ledge.ledgeY-.15],B:[ledge.edgeX+S.d*4.4,ledge.ledgeY-.35]};
+  // Compress the upper body slightly to keep contact without stretching bones.
+  let shift=[0,0];
+  for(let i=0;i<3;i++)for(const side of ['F','B']){
+    const root=side==='F'?S.sh:S.shB,t=targets[side],dx=t[0]-root[0]-shift[0],dy=t[1]-root[1]-shift[1],len=Math.hypot(dx,dy),over=Math.max(0,len-15.8)*weights[side];
+    if(len){shift[0]+=dx/len*over;shift[1]+=dy/len*over;}
+  }
+  for(const key of ['sh','shB','neck','head']){S[key][0]+=shift[0];S[key][1]+=shift[1];}
+  S.gripF=weights.F;S.gripB=weights.B;
+  for(const side of ['F','B']){
+    const root=side==='F'?S.sh:S.shB,free=S['h'+side],w=weights[side];
+    if(w<=0)continue;
+    const target=[lerp(free[0],targets[side][0],w),lerp(free[1],targets[side][1],w)];
+    const arm=solveArm(root,target,S.d);S['e'+side]=arm.elbow;S['h'+side]=arm.hand;
+  }
+}
+function drawHand(wrist,elbow,C,dir,mode='relaxed',grip=0){
+  g.save();g.translate(wrist[0],wrist[1]);
+  const skin=gradient(g,-1.2,0,2.6,1,[[0,C.skinD],[.4,C.skin],[.7,'#efc49b'],[1,C.skinD]]);
+  const finger=(pts,w=.45)=>{
+    line(g,pts,'#49372f',w+.22);line(g,pts,C.skin,w);
+    if(pts.length>2){const p=pts[1];jewel(g,p[0]-.07,p[1]-.06,.15,'#f0c9a2');}
+    const tip=pts[pts.length-1];line(g,[[tip[0]-.08,tip[1]-.15],[tip[0]+.09,tip[1]-.08]],'#eed1b4',.15);
+  };
+  if(grip>.55){
+    g.scale(dir,1);
+    // Palm against the stone face, four separate fingers hooked over its lip.
+    shape(g,[[-.85,.65],[.9,.6],[1.1,-1.2],[.7,-1.8],[-.8,-1.65],[-1.1,-.4]],skin,'#50382d',.2);
+    for(let i=0;i<4;i++){const x=-.8+i*.5,len=[2.4,2.8,2.65,2.15][i];finger([[x,-1.1],[x-.15,-len],[x+.17,-len-.2],[x+.3,-len+.85]],.43);}
+    finger([[-.75,.1],[-1.5,-.8],[-1.4,-1.45],[-.95,-1.25]],.52);
+    line(g,[[-.4,-.6],[.45,-.8]],C.skinD,.15);
+  }else{
+    g.rotate(Math.atan2(wrist[1]-elbow[1],wrist[0]-elbow[0])-Math.PI/2);g.scale(dir,1);
+    const closed=mode==='grip'||mode==='fist',reach=mode==='reach';
+    shape(g,[[-.7,-.45],[.75,-.45],[1.05,.7],[.8,1.65],[-.8,1.7],[-1,.55]],skin,'#50382d',.22);
+    for(let i=0;i<4;i++){const x=-.75+i*.5,len=[1.25,1.65,1.5,1.05][i];
+      if(closed)finger([[x,1],[x+.15,1.95],[x-.16,2.15],[x-.25,1.35]],.48);
+      else finger([[x,1.25],[x+(reach?(i-1.5)*.14:.12),1.6+len*.55],[x+(reach?(i-1.5)*.23:.32),1.6+len]],.42);
+    }
+    finger([[-.9,.4],[-1.5,1.05],[-1.3,closed?1.7:2],[-.6,closed?1.35:1.9]],.54);
+    line(g,[[-.45,.4],[.2,.65],[.55,.4]],C.skinD,.16);
+  }
+  g.restore();
+}
+
 const OL='#0a0810';
 function drawSword(S,p,len=17){
   const a=p.sw*DEG,dx=Math.sin(a)*S.d,dy=Math.cos(a),h=S.hF;
@@ -795,7 +861,9 @@ function dressedTorso(S,C,guard,t){
 function drawDetailedPerson(e,p,t,C,guard){
   const S=skeleton(e,p),d=S.d,hip=S.hip;
   const cloth=guard?C.pants:'#d1c5a5';
-  tailoredLimb(S.shB,S.eB,3,2.5,C.skinD);tailoredLimb(S.eB,S.hB,2.6,1.5,C.skinD);
+  const handMode=(guard||e.armed||p.showSword||p.showPotion)?'grip':e.st==='punch'?'fist':['air','fall','rise','teeter'].includes(e.st)?'reach':'relaxed';
+  tailoredLimb(S.shB,S.eB,3,2.5,C.skinD);tailoredLimb(S.eB,S.hB,2.6,1.4,C.skinD);
+  if(!S.gripB)drawHand(S.hB,S.eB,{...C,skin:C.skinD},d,'relaxed');
   tailoredLimb(hip,S.kB,5,4.2,guard?C.pants:'#9f967f',true);tailoredLimb(S.kB,S.aB,4.2,2.3,guard?C.pants:'#a59b83',true);drawBoot(S.aB,S.tB,'#40382e');
   const tailX=hip[0]-d*(5+Math.min(5,Math.abs(e.vx||0)*.03));
   shape(g,[[hip[0]-d*2,hip[1]-1],[tailX,hip[1]+4+Math.sin(t*9)],[tailX+d*1.5,hip[1]+7],[hip[0],hip[1]+2]],'#743039','#b16b55',.2);
@@ -811,11 +879,14 @@ function drawDetailedPerson(e,p,t,C,guard){
   // Pauldron, leather vambrace, straps, engraved cuff and articulated fingers.
   const sleeve=[lerp(S.sh[0],S.eF[0],.4),lerp(S.sh[1],S.eF[1],.4)];tailoredLimb(S.sh,sleeve,4.1,3.4,guard?'#7d887f':'#31586b');
   for(let k=0;k<3;k++){const f=.13+k*.1;line(g,[[lerp(S.sh[0],sleeve[0],f*2)-1.3,lerp(S.sh[1],sleeve[1],f*2)],[lerp(S.sh[0],sleeve[0],f*2)+1.3,lerp(S.sh[1],sleeve[1],f*2)+.2]],'#bcaa7e',.2);}
-  const wrist=[lerp(S.eF[0],S.hF[0],.53),lerp(S.eF[1],S.hF[1],.53)];tailoredLimb(wrist,S.hF,2.9,2.1,guard?'#727d75':'#5c4333');
-  for(let k=0;k<3;k++){const f=.6+k*.14,x=lerp(S.eF[0],S.hF[0],f),y=lerp(S.eF[1],S.hF[1],f);line(g,[[x-.8,y-.3],[x+.8,y+.3]],'#c4ab75',.25);}
-  jewel(g,S.hF[0],S.hF[1],.95,C.skin);for(let k=0;k<3;k++)line(g,[[S.hF[0]-.3+k*.35,S.hF[1]-.4],[S.hF[0]-.1+k*.35,S.hF[1]+.5]],C.skinD,.12);
-  if((guard&&e.st!=='dead'&&e.st!=='die')||(!guard&&(e.armed||p.showSword)))return drawSword(S,p,guard?16:17);
-  return null;
+  const wrist=[lerp(S.eF[0],S.hF[0],.42),lerp(S.eF[1],S.hF[1],.42)],cuff=[lerp(S.eF[0],S.hF[0],.78),lerp(S.eF[1],S.hF[1],.78)];tailoredLimb(wrist,cuff,2.9,2.1,guard?'#727d75':'#5c4333');
+  for(let k=0;k<3;k++){const f=.46+k*.13,x=lerp(S.eF[0],S.hF[0],f),y=lerp(S.eF[1],S.hF[1],f);line(g,[[x-.8,y-.3],[x+.8,y+.3]],'#c4ab75',.25);}
+  let tip=null;
+  if((guard&&e.st!=='dead'&&e.st!=='die')||(!guard&&(e.armed||p.showSword)))tip=drawSword(S,p,guard?16:17);
+  // Hands render after the weapon and torso so fingers visibly close around grips.
+  if(S.gripB)drawHand(S.hB,S.eB,C,d,'reach',S.gripB);
+  drawHand(S.hF,S.eF,C,d,handMode,S.gripF||0);
+  return tip;
 }
 
 function drawHero(e,p,t){return drawDetailedPerson(e,p,t,HERO,false);}
