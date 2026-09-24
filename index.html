@@ -583,13 +583,37 @@ function drawPillar(x,y){
 
 function drawGate(x,y,p){
   const gx=x+21, gw=9, top=y-6, hmax=62, h=Math.round(p*hmax);
-  px(g,gx-3,top-3,'#1c2032',gw+6,4); px(g,gx-3,top-3,'#4a5274',gw+6,1);
+  // stone guide slots the portcullis slides in
+  for(const sx of [gx-4,gx+gw+2]){
+    px(g,sx,top-6,'#0b0e16',2,hmax+12);
+    px(g,sx,top-6,'#414e6b',1,hmax+12);
+    px(g,sx+1,top-6,'#04060b',1,hmax+12);
+  }
+  // riveted steel lintel housing
+  g.fillStyle=steel(g,gx-4,top-4,gw+8,5,true); g.fillRect(gx-4,top-4,gw+8,5);
+  px(g,gx-4,top-4,'#97a3c2',gw+8,1);
+  px(g,gx-4,top,'#0c0f17',gw+8,1);
+  rivet(g,gx-1,top-1.4,.7); rivet(g,gx+gw+1,top-1.4,.7);
   if(h<=0) return;
-  for(const bx of [0,4,8]){ px(g,gx+bx,top,'#15161e',1,h); }
-  for(const bx of [1,5]){ px(g,gx+bx,top,'#3d4050',2,h); px(g,gx+bx,top,'#6f7388',1,h); }
-  for(let yy=top+h-2;yy>top;yy-=6){ px(g,gx,yy,'#15161e',gw,2); px(g,gx,yy,'#7a7f96',gw,1); }
-  for(let yy=top+3;yy<top+h;yy+=6) for(const bx of [1,5]){disc(gx+bx+.6,yy,.6,'#242a35');disc(gx+bx+.4,yy-.2,.23,'#d7bd8c');}
-  for(let i=0;i<3;i++) px(g,gx+1+i*3,top+h,'#5a5e72',1,2);
+  // dark cavity behind the bars
+  px(g,gx,top,'#06090f',gw,h);
+  // cylindrical vertical bars with sheen + core shade
+  for(let i=0;i<3;i++){ const bx=gx+0.5+i*3;
+    g.fillStyle=steel(g,bx,top,2,h); g.fillRect(bx,top,2,h);
+    px(g,bx,top,'#dde8f6',.6,h);
+    px(g,bx+1.4,top,'#1e2637',.6,h);
+  }
+  // crossbars with bevel + rivets
+  for(let yy=top+2;yy<top+h-1;yy+=6){
+    g.fillStyle=steel(g,gx-1,yy,gw+2,2.4,true); g.fillRect(gx-1,yy,gw+2,2.4);
+    px(g,gx-1,yy,'#b3bed9',gw+2,.7);
+    px(g,gx-1,yy+1.7,'#0b0e15',gw+2,.7);
+    rivet(g,gx+1.2,yy+1.2,.55); rivet(g,gx+gw-1.2,yy+1.2,.55);
+  }
+  // pointed bottom fangs
+  for(let i=0;i<3;i++){ const bx=gx+0.5+i*3, by=top+h;
+    shape(g,[[bx,by-1],[bx+2,by-1],[bx+1,by+2.2]],steel(g,bx,by-1,2,3),'#0e1219',.25);
+  }
 }
 function drawButton(x,y,pressed,drop){
   if(pressed){ px(g,x+5,y+53,drop?'#3e4566':'#5a6385',22,2); px(g,x+5,y+53,'#2a2f48',22,1); }
@@ -643,23 +667,63 @@ function drawChopper(x,y,cl,bloody){
 function drawDoorPanel(x,y,open){
   const L=x-6+4, Wd=36, top=y+8, full=48, h=Math.round(full*(1-open));
   if(h<=0) return;
-  px(g,L,top,'#2c3048',Wd,h);
-  for(let yy=top+h-1;yy>=top;yy-=4){ px(g,L,yy,'#4b5276',Wd,1); px(g,L,yy-1,'#6a729a',Wd,1); }
-  for(let xx=L+3;xx<L+Wd;xx+=8) px(g,xx,top,'#1c1f30',1,h);
-  px(g,L,top+h-1,'#15172a',Wd,1);
+  // base slab with vertical sheen
+  g.fillStyle=gradient(g,L,top,Wd,0,[[0,'#2b3454'],[.12,'#48567f'],[.5,'#333d5e'],[.88,'#222941'],[1,'#151a2e']]);
+  g.fillRect(L,top,Wd,h);
+  // plank grooves
+  for(let xx=L+9;xx<L+Wd-1;xx+=9){ px(g,xx,top,'rgba(9,12,22,.55)',1,h); px(g,xx+1,top,'rgba(165,180,215,.13)',1,h); }
+  // horizontal rails with bevel (top / mid / bottom)
+  const rails=[[top,4],[top+h/2-2,4],[top+h-5,5]];
+  for(const [ry,rh] of rails){ if(rh<2||ry+rh>top+h+0.5) continue;
+    g.fillStyle=steel(g,L,ry,Wd,rh,true); g.fillRect(L,ry,Wd,Math.min(rh,top+h-ry));
+    px(g,L,ry,'#9fadcd',Wd,1);
+    px(g,L,Math.min(ry+rh-1,top+h-1),'#0b0e17',Wd,1);
+  }
+  // recessed field panels with inner bevel + brass studs
+  if(h>16){
+    const cols=[[L+4,Wd/2-5],[L+Wd/2+1,Wd/2-5]], rows=[[top+5.5,h/2-10],[top+h/2+3,h/2-10.5]];
+    for(const [fx,fw] of cols) for(const [fy,fh] of rows){ if(fw<3||fh<3.5) continue;
+      g.fillStyle='#1f2540'; g.fillRect(fx,fy,fw,fh);
+      px(g,fx,fy,'#0a0d17',fw,1); px(g,fx,fy,'#0a0d17',1,fh);
+      px(g,fx,fy+fh-1,'#5d6a92',fw,1); px(g,fx+fw-1,fy,'#5d6a92',1,fh);
+      px(g,fx+1,fy+1,'rgba(170,185,220,.18)',fw-2,1);
+      rivet(g,fx+fw/2,fy+1.6,.5);
+    }
+  }
+  // side stiles: dark edge + steel highlight
+  px(g,L,top,'#090c14',2,h); px(g,L+2,top,'#7e8db1',1,h);
+  px(g,L+Wd-2,top,'#090c14',2,h); px(g,L+Wd-3,top,'#3a4568',1,h);
+  // crown highlight + bottom contact shade
+  px(g,L,top,'#c3cfe9',Wd,1);
+  px(g,L,top+h-1,'#05070d',Wd,1);
 }
-function drawFlask(x,y,big,t,scale=1){
-  g.save();g.translate(x,y);g.scale(scale,scale);
+function drawFlask(x,y,big,t,scale=1,tilt=0,fill=1){
+  g.save();g.translate(x,y);g.rotate(tilt);g.scale(scale,scale);
   const w=big?4.6:3.6,h=big?8:6.5;
   const bottle=()=>{g.beginPath();g.moveTo(-1.4,-h-3);g.lineTo(1.4,-h-3);g.lineTo(1.4,-h+.3);g.bezierCurveTo(w,-h+1,w+1,-1,w-1,0);g.quadraticCurveTo(0,1.4,-w+1,0);g.bezierCurveTo(-w-1,-1,-w,-h+1,-1.4,-h+.3);g.closePath();};
   bottle();const glass=g.createLinearGradient(-w,0,w,0);glass.addColorStop(0,'rgba(117,165,190,.6)');glass.addColorStop(.32,'rgba(224,248,255,.32)');glass.addColorStop(.6,'rgba(39,79,104,.6)');glass.addColorStop(1,'rgba(203,240,244,.7)');g.fillStyle=glass;g.fill();
-  g.save();g.clip();const liquid=g.createLinearGradient(0,-h,0,1);liquid.addColorStop(0,big?'#88f9cb':'#ff899c');liquid.addColorStop(.45,big?'#1aba92':'#d42657');liquid.addColorStop(1,big?'#064c55':'#5c102d');
-  g.fillStyle=liquid;g.beginPath();g.moveTo(-w-1,-h*.62);g.quadraticCurveTo(0,-h*.62+Math.sin(t*2)*.5,w+1,-h*.62);g.lineTo(w+1,2);g.lineTo(-w-1,2);g.closePath();g.fill();
-  for(let i=0;i<3;i++){const age=(t*.35+i*.33)%1;disc(Math.sin(i*7)*w*.45,-age*h*.65,.22,big?'#aaffdb':'#ffb2bf');}
-  g.restore();bottle();g.strokeStyle='rgba(204,241,255,.75)';g.lineWidth=.35;g.stroke();
-  g.strokeStyle='rgba(244,255,255,.8)';g.lineWidth=.65;g.beginPath();g.moveTo(-w*.55,-h*.5);g.quadraticCurveTo(-w*.75,-h*.2,-w*.4,-.8);g.stroke();
+  // liquid clipped to the glass, surface kept world-level so it pools correctly when tilted
+  g.save();bottle();g.clip();
+  g.rotate(-tilt);
+  const surfY=1.6-fill*(1.6+h*0.62)+Math.sin(t*3)*.15;
+  const liquid=g.createLinearGradient(0,surfY-2,0,2);liquid.addColorStop(0,big?'#88f9cb':'#ff899c');liquid.addColorStop(.45,big?'#1aba92':'#d42657');liquid.addColorStop(1,big?'#064c55':'#5c102d');
+  g.fillStyle=liquid; g.fillRect(-h-6,surfY,2*(h+6),6-surfY);
+  g.fillStyle='rgba(255,255,255,.45)'; g.fillRect(-h-6,surfY,2*(h+6),.3);
+  if(fill>0.15) for(let i=0;i<3;i++){const age=(t*.4+i*.33)%1;const by=1.3-age*(1.3-surfY-.4);g.globalAlpha=.5*(1-age);disc(Math.sin(i*7+t)*w*.3,by,.22,big?'#aaffdb':'#ffb2bf');}
+  g.globalAlpha=1; g.restore();
+  bottle();g.strokeStyle='rgba(204,241,255,.75)';g.lineWidth=.35;g.stroke();
+  g.strokeStyle='rgba(244,255,255,.85)';g.lineWidth=.7;g.beginPath();g.moveTo(-w*.55,-h*.5);g.quadraticCurveTo(-w*.75,-h*.2,-w*.4,-.8);g.stroke();
+  g.fillStyle='rgba(8,16,26,.35)';g.beginPath();g.ellipse(0,.55,w*.78,.65,0,0,Math.PI*2);g.fill();
   roundPanel(-1.8,-h-3.5,3.6,1.2,.3,'#bb9b58','#edcf87');
-  roundPanel(-1.1,-h-5,2.2,1.7,.3,'#76523a');
+  px(g,-1.8,-h-3.4,'#f4e2ac',3.6,.4);
+  if(Math.abs(tilt)>0.4){
+    // uncorked while drinking: dark open mouth with a rim glint
+    g.fillStyle='#0a0d12';g.beginPath();g.ellipse(0,-h-3.4,1.25,.55,0,0,Math.PI*2);g.fill();
+    g.strokeStyle='rgba(240,250,255,.8)';g.lineWidth=.3;g.beginPath();g.ellipse(0,-h-3.4,1.25,.55,0,Math.PI*1.1,Math.PI*1.9);g.stroke();
+  }else{
+    roundPanel(-1.1,-h-5,2.2,1.7,.3,'#76523a');
+    px(g,-1.1,-h-4.9,'#a3764e',2.2,.5);
+  }
   disc(0,-h-2,.45,big?'#6bf9d4':'#ff698d');g.restore();
 }
 function drawRelicSword(x,y,t){
@@ -686,7 +750,7 @@ function drawPickupPrompt(){
   const it=items.find(it=>it.r===rowOf(kid.y)&&Math.abs(it.c*TW+16-kid.x)<26);
   if(!it)return;
   const title=it.type==='s'?'Take the scimitar':it.type==='P'?'Drink life elixir':'Drink healing potion';
-  const width=textW(title,.86)+21,x=clamp(it.c*TW+16-cam.rx*SW-width/2,5,SW-width-5),y=clamp(it.r*TH-cam.ry*VIEWH+27,5,VIEWH-20);
+  const width=textW(title,.86)+21,x=clamp(it.c*TW+16-cam.rx*SW-width/2,5,SW-width-5),y=clamp(it.r*TH-cam.ry*VIEWH+FO+4,5,VIEWH-13);
   roundPanel(x,y,width,12,3,'rgba(7,15,25,.92)','rgba(208,180,119,.5)');keyCap('X',x+3,y+2,9);g.save();g.font=fontFace(.86);g.textBaseline='middle';g.textAlign='left';g.fillStyle='#f2e9d7';g.fillText(title,x+16,y+6+.3);g.restore();
 }
 
@@ -1527,7 +1591,30 @@ function renderWorld(){
     drawHero(kid,kidPose(kid),clock); g.restore();
   } else if(!(kid.invuln>0&&Math.floor(clock*20)%2&&kid.st!=='dead')) {
     const p=kidPose(kid); drawHero(kid,p,clock);
-    if(p.showPotion){const S=skeleton(kid,p);drawFlask(S.hF[0],S.hF[1],p.showPotion==='P',clock,.55);}
+    if(p.showPotion){
+      const S=skeleton(kid,p), big=p.showPotion==='P', bh=big?8:6.5;
+      // drinking performance: lift upright, tip right over (mouth ends at the
+      // lips — the raised hand sits above them, so the bottle must pour down),
+      // hold tilted with a gulp bob while the draught drains, then lower.
+      let tilt=0, fill=1, bob=0, ax=S.hF[0], ay=S.hF[1];
+      if(kid.st==='pickup'){
+        const T=kid.t, ss=(a,b)=>{const u=clamp((T-a)/(b-a),0,1);return u*u*(3-2*u);};
+        const held=ss(0.9,1.1)*(1-ss(1.4,1.6));
+        tilt=-S.d*(2.3*ss(0.62,0.95)-2.15*ss(1.45,1.75));
+        bob=Math.sin(T*16)*0.3*held;
+        fill=1-0.88*ss(0.8,1.5,T);
+        // glinting droplet slipping from lip of bottle to lips mid-draught
+        if(held>0.5&&fill>0.08){
+          const mx=ax+Math.sin(tilt)*(bh+4.2)*.55, my=ay-Math.cos(tilt)*(bh+4.2)*.55;
+          const lx0=S.head[0]+S.d*2.4, ly0=S.head[1]+1.4;
+          g.save(); g.globalAlpha=.35+.3*Math.sin(T*16);
+          disc(lerp(mx,lx0,.55),lerp(my,ly0,.55),.32,big?'#aaffdb':'#ffc0cc');
+          disc(lerp(mx,lx0,.75),lerp(my,ly0,.75),.22,'#ffffff');
+          g.restore();
+        }
+      }
+      drawFlask(ax,ay+bob,big,clock,.55,tilt,fill);
+    }
   }
   // particles
   for(const p of particles){ g.globalAlpha=clamp(p.life/p.max*1.5,0,1); px(g,Math.round(p.x),Math.round(p.y),p.col); }
