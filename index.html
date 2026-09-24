@@ -525,15 +525,31 @@ function drawDistant(rx,ry){
 }
 function drawLandmark(cx,x,y,kind){
   cx.save();cx.globalAlpha=.85;
-  if(kind==='statue'){
-    // A broken sentinel: chipped shoulder, missing spear tip, broad pedestal.
-    cx.fillStyle='#26343b';cx.fillRect(x-10,y+45,20,8);cx.fillStyle='#64706b';cx.fillRect(x-9,y+44,18,1);
-    shape(cx,[[x-4,y+41],[x-3,y+25],[x-7,y+20],[x-5,y+16],[x+5,y+16],[x+7,y+23],[x+3,y+26],[x+4,y+41]],gradient(cx,x-6,0,12,0,[[0,'#283c43'],[.4,'#71807a'],[1,'#354850']]),'#788079',.25);
-    jewel(cx,x,y+12,3.4,'#647770');shape(cx,[[x-3,y+10],[x,y+6],[x+3,y+10]],'#4b6364');
-    line(cx,[[x-6,y+21],[x-9,y+29],[x-10,y+22]],'#64736d',1.5);
-    line(cx,[[x-10,y+16],[x-10,y+43]],'#56676a',.55);
-    line(cx,[[x+2,y+17],[x,y+23],[x+2,y+26],[x+1,y+33]],'#24353b',.35);
-    shape(cx,[[x+5,y+49],[x+8,y+45],[x+10,y+49]],'#5d6c65');
+  if(kind==='lion'){
+    cx.globalAlpha=1;
+    const stone=gradient(cx,x-12,y+16,25,34,[[0,'#b9ac86'],[.35,'#a49673'],[.7,'#756c54'],[1,'#454b43']]);
+    const ellipse=(xx,yy,rx,ry,fill,stroke)=>{cx.beginPath();cx.ellipse(xx,yy,rx,ry,0,0,Math.PI*2);cx.fillStyle=fill;cx.fill();if(stroke){cx.strokeStyle=stroke;cx.lineWidth=.35;cx.stroke();}};
+    cx.fillStyle='rgba(3,13,20,.55)';cx.beginPath();cx.ellipse(x,y+52,16,1.2,0,0,Math.PI*2);cx.fill();
+    cx.fillStyle=gradient(cx,0,y+48,0,5,[[0,'#a19a80'],[.2,'#6b7164'],[1,'#34454a']]);cx.fillRect(x-14,y+48,28,5);
+    line(cx,[[x-14,y+48],[x+14,y+48]],'#d0c4a1',.45);line(cx,[[x-13,y+51.5],[x+13,y+51.5]],'#536259',.3);
+    // Curled tail, powerful seated haunch and upright chest.
+    cx.beginPath();cx.moveTo(x-6,y+44);cx.bezierCurveTo(x-19,y+46,x-17,y+32,x-12,y+36);cx.bezierCurveTo(x-9,y+38,x-13,y+41,x-14,y+38);cx.strokeStyle='#8d8769';cx.lineWidth=1.5;cx.stroke();
+    cx.beginPath();cx.moveTo(x-10,y+46);cx.bezierCurveTo(x-16,y+37,x-8,y+32,x-6,y+29);cx.bezierCurveTo(x-4,y+24,x-5,y+21,x+2,y+21);cx.bezierCurveTo(x+11,y+22,x+10,y+32,x+7,y+38);cx.lineTo(x+7,y+46);cx.closePath();cx.fillStyle=stone;cx.fill();cx.strokeStyle='#555c4d';cx.lineWidth=.4;cx.stroke();
+    ellipse(x-6,y+40,6.1,6.6,stone,'#62654f');
+    cx.beginPath();cx.moveTo(x-9,y+41);cx.quadraticCurveTo(x-5,y+37,x-2,y+43);cx.lineTo(x+2,y+46);cx.lineTo(x-8,y+46);cx.fillStyle='#928969';cx.fill();
+    // Rear foreleg and paw, then the lit near foreleg with carved toes.
+    shape(cx,[[x+5,y+29],[x+8,y+29],[x+8,y+43],[x+11,y+44],[x+11,y+46],[x+5,y+46]],'#77745b','#4b564b',.35);
+    cx.beginPath();cx.moveTo(x+1,y+28);cx.bezierCurveTo(x+5,y+28,x+5,y+33,x+4,y+38);cx.lineTo(x+4,y+43);cx.quadraticCurveTo(x+9,y+43,x+9,y+47);cx.lineTo(x,y+47);cx.quadraticCurveTo(x-1,y+43,x,y+39);cx.closePath();cx.fillStyle=stone;cx.fill();cx.strokeStyle='#56604e';cx.lineWidth=.35;cx.stroke();
+    for(const xx of [x+2,x+4.2,x+6.4])line(cx,[[xx,y+45],[xx+.2,y+46.8]],'#5c604b',.28);
+    // Sculpted mane frames a feline profile; layered locks catch the light.
+    cx.beginPath();cx.moveTo(x-4,y+15);cx.bezierCurveTo(x-11,y+18,x-9,y+26,x-5,y+30);cx.lineTo(x-1,y+34);cx.bezierCurveTo(x+2,y+32,x+7,y+29,x+8,y+22);cx.bezierCurveTo(x+9,y+15,x+1,y+11,x-4,y+15);cx.closePath();cx.fillStyle=gradient(cx,x-8,y+15,16,16,[[0,'#a1936c'],[.4,'#8a7955'],[1,'#514f3d']]);cx.fill();cx.strokeStyle='#514f3e';cx.lineWidth=.45;cx.stroke();
+    for(let k=0;k<8;k++){const a=2+k*.39,xx=x+Math.cos(a)*6,yy=y+22+Math.sin(a)*7;cx.beginPath();cx.moveTo(xx,yy-2);cx.quadraticCurveTo(xx-1.8,yy+1,xx+.2,yy+4);cx.strokeStyle=k%2?'#baa77a':'#685e44';cx.lineWidth=.4;cx.stroke();}
+    ellipse(x+3,y+16.1,1.8,2.1,'#b4a17a','#695f47');ellipse(x+3.3,y+16.4,.8,1.1,'#71634b');
+    cx.beginPath();cx.moveTo(x+3,y+17);cx.quadraticCurveTo(x+8,y+16,x+9,y+20);cx.lineTo(x+12,y+22);cx.quadraticCurveTo(x+13,y+23,x+11,y+24);cx.lineTo(x+10,y+26);cx.quadraticCurveTo(x+6,y+29,x+3,y+25);cx.quadraticCurveTo(x,y+21,x+3,y+17);cx.fillStyle=gradient(cx,x+2,y+18,10,9,[[0,'#d0ba8a'],[.5,'#b6a17a'],[1,'#8b8060']]);cx.fill();cx.strokeStyle='#70664b';cx.lineWidth=.3;cx.stroke();
+    line(cx,[[x+5.8,y+20],[x+8,y+20.5]],'#61573e',.6);ellipse(x+7.3,y+21,.55,.4,'#303b33');
+    shape(cx,[[x+10.7,y+22],[x+12.5,y+22.3],[x+11.7,y+23.6]],'#484c3a');
+    line(cx,[[x+11.6,y+23.7],[x+10.6,y+24.6],[x+8.5,y+24.8]],'#665d45',.3);
+    line(cx,[[x+3,y+31],[x+2,y+41]],'rgba(224,210,166,.4)',.45);
   }else if(kind==='fountain'){
     for(const [yy,ww] of [[y+51,24],[y+42,19],[y+32,11]]){
       shape(cx,[[x-ww/2,yy],[x+ww/2,yy],[x+ww*.36,yy+3],[x-ww*.36,yy+3]],gradient(cx,x-ww/2,yy,ww,3,[[0,'#243e46'],[.4,'#829285'],[1,'#344f53']]),'#879383',.3);
@@ -541,11 +557,21 @@ function drawLandmark(cx,x,y,kind){
     }
     cx.fillStyle='#61766e';cx.fillRect(x-1,y+24,2,29);jewel(cx,x,y+24,1.8,'#a59e74');
     for(const d of [-1,1]){line(cx,[[x+d*2,y+31],[x+d*3,y+36],[x+d*3,y+41]],'#639599',.3);line(cx,[[x+d*7,y+42],[x+d*8,y+50]],'#54848b',.35);}
-  }else if(kind==='astrolabe'){
-    cx.strokeStyle='#81795c';cx.lineWidth=.6;cx.beginPath();cx.arc(x,y+27,10,0,Math.PI*2);cx.stroke();
-    for(let k=0;k<12;k++){const a=k*Math.PI/6;line(cx,[[x+Math.cos(a)*8.5,y+27+Math.sin(a)*8.5],[x+Math.cos(a)*10,y+27+Math.sin(a)*10]],'#9e9269',.35);}
-    cx.beginPath();cx.ellipse(x,y+27,5,9,.6,0,Math.PI*2);cx.stroke();line(cx,[[x-8,y+31],[x+8,y+23]],'#c0a578',.7);jewel(cx,x,y+27,1.2,'#69968f');
-    cx.fillStyle='#536363';cx.fillRect(x-1,y+37,2,13);cx.fillRect(x-7,y+50,14,3);
+  }else if(kind==='vase'){
+    cx.globalAlpha=1;
+    const vessel=()=>{cx.beginPath();cx.moveTo(x-4,y+13);cx.bezierCurveTo(x-2,y+18,x-2.4,y+22,x-5.5,y+26);cx.bezierCurveTo(x-12,y+33,x-9,y+44,x-5,y+49);cx.quadraticCurveTo(x,y+51,x+5,y+49);cx.bezierCurveTo(x+9,y+44,x+12,y+33,x+5.5,y+26);cx.bezierCurveTo(x+2.4,y+22,x+2,y+18,x+4,y+13);cx.closePath();};
+    cx.fillStyle='rgba(3,13,20,.55)';cx.beginPath();cx.ellipse(x,y+52,10,1.1,0,0,Math.PI*2);cx.fill();
+    vessel();cx.fillStyle=gradient(cx,x-9,0,18,0,[[0,'#092c45'],[.18,'#146879'],[.38,'#479e9e'],[.56,'#237c88'],[.8,'#10445f'],[1,'#082839']]);cx.fill();cx.strokeStyle='#789f97';cx.lineWidth=.35;cx.stroke();
+    cx.save();vessel();cx.clip();
+    for(const yy of [y+16,y+23,y+27,y+44,y+47]){line(cx,[[x-11,yy],[x,yy+.7],[x+11,yy]],'#c3a66b',.48);line(cx,[[x-11,yy+.7],[x,yy+1.35],[x+11,yy+.7]],'#567f79',.22);}
+    for(const xx of [x-6,x,x+6]){cx.beginPath();cx.moveTo(xx,y+30);cx.bezierCurveTo(xx+4,y+34,xx+3,y+39,xx,y+42);cx.bezierCurveTo(xx-3,y+39,xx-4,y+34,xx,y+30);cx.strokeStyle='#c8b67e';cx.lineWidth=.35;cx.stroke();}
+    rosette(cx,x,y+36,3.1,'#e1cd96');jewel(cx,x,y+36,.6,'#d5be7b');
+    cx.beginPath();cx.moveTo(x-1.6,y+18);cx.bezierCurveTo(x-1.4,y+27,x-6.5,y+30,x-5.5,y+39);cx.strokeStyle='rgba(209,244,226,.5)';cx.lineWidth=.8;cx.stroke();
+    line(cx,[[x-5.2,y+40.5],[x-4.6,y+43]],'rgba(209,244,226,.32)',.5);
+    cx.restore();
+    cx.fillStyle=gradient(cx,x-5,y+49,10,0,[[0,'#7b6846'],[.4,'#deca8c'],[1,'#716144']]);cx.fillRect(x-5,y+49.5,10,1.6);
+    cx.beginPath();cx.ellipse(x,y+13,4.4,1.05,0,0,Math.PI*2);cx.fillStyle='#183e4a';cx.fill();cx.strokeStyle='#d6b97d';cx.lineWidth=.55;cx.stroke();
+    line(cx,[[x-3,y+13.7],[x,y+14.2],[x+3,y+13.7]],'#f0db9c',.3);
   }else if(kind==='cistern'){
     archPath(cx,x-14,y+9,28,43);cx.fillStyle='#0a2029';cx.fill();cx.strokeStyle='#4c6465';cx.lineWidth=1.6;cx.stroke();
     for(let yy=y+17;yy<y+48;yy+=6)line(cx,[[x-11,yy],[x+11,yy]],'#1c343e',.5);
@@ -588,19 +614,33 @@ function drawRecess(cx,c,r,x,y){
   line(cx,[[bx,y+52],[bx+64,y+52]],W.trim,.35);
   if(rx===3&&r<3)for(let k=0;k<8;k++)rosette(cx,bx+4+k*8,y+53, .8,'#8b805d');
   if(bay===(rx===4?4:2)&&r%3===(r<3?1:0)){
-    const kind=r>=3?(rx===2?'cistern':rx===3?'forge':null):['statue','astrolabe','statue',null,'fountain'][rx];
+    const kind=r>=3?(rx===2?'cistern':rx===3?'forge':null):['lion','vase','lion',null,'fountain'][rx];
     if(kind)drawLandmark(cx,bx+32,y,kind);
   }
 }
 
+function bannerPosition(pair,r){
+  const bx=pair*2*TW,y=r*TH;
+  // Include the pole, full cloth sway and clearance around the torch flame/bracket.
+  for(const offset of [8,46,27]){
+    const xx=bx+offset,left=xx-2,right=xx+12,top=y+8,bottom=y+42;
+    if(torches.some(t=>left<t.c*TW+24&&right>t.c*TW+8&&top<t.r*TH+34&&bottom>t.r*TH-2))continue;
+    if(door&&left<door.c*TW+40&&right>door.c*TW-8&&top<door.r*TH+56&&bottom>door.r*TH)continue;
+    let blocked=false;
+    for(let c=colOf(left);c<=colOf(right);c++)if(['#','|','G','/'].includes(tile(c,r)))blocked=true;
+    if(!blocked)return xx;
+  }
+  return null;
+}
 function drawLivingDecor(rx,ry,t){
   const W=wingAt(rx*10,ry*3);
   for(let r=ry*3;r<ry*3+3;r++)for(let pair=rx*5;pair<rx*5+5;pair++){
     const c=pair*2,bx=c*TW,y=r*TH;
     if(tile(c,r)==='#'&&tile(c+1,r)==='#')continue;
     g.save();g.beginPath();for(let q=0;q<2;q++)if(tile(c+q,r)!=='#')g.rect(bx+q*TW,y,TW,53);g.clip();
-    if(r<3&&((pair%5===1)||(rx===2&&pair%5===3))){
-      const xx=bx+8,wind=Math.sin(t*1.3+pair)*.65+Math.sin(t*2.1+pair)*.2;
+    const bannerX=r<3&&((pair%5===1)||(rx===2&&pair%5===3))?bannerPosition(pair,r):null;
+    if(bannerX!==null){
+      const xx=bannerX,wind=Math.sin(t*1.3+pair)*.65+Math.sin(t*2.1+pair)*.2;
       line(g,[[xx-1,y+9],[xx+10,y+9]],'#a28c61',.65);
       g.beginPath();g.moveTo(xx,y+9);g.lineTo(xx+9,y+9);g.bezierCurveTo(xx+8+wind,y+20,xx+10-wind,y+28,xx+9+wind,y+37);g.lineTo(xx+4.5+wind,y+41);g.lineTo(xx+wind,y+37);g.bezierCurveTo(xx+1-wind,y+28,xx-1+wind,y+19,xx,y+9);
       g.fillStyle=gradient(g,xx,0,9,0,[[0,'#192d35'],[.3,W.fabric],[.6,W.fabric],[1,'#172932']]);g.fill();g.strokeStyle=W.trim;g.lineWidth=.3;g.stroke();
