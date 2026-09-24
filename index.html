@@ -852,9 +852,15 @@ function drawHand(wrist,elbow,C,dir,mode='relaxed',grip=0){
 
 const OL='#0a0810';
 function drawSword(S,p,len=17){
-  const a=p.sw*DEG,dx=Math.sin(a)*S.d,dy=Math.cos(a),h=S.hF;
-  g.save();g.translate(h[0],h[1]);g.rotate(Math.atan2(dy,dx)-Math.PI);g.scale(len/18,.8);drawRelicSword(-6,0,clock);g.restore();
-  return [h[0]+dx*len,h[1]+dy*len];
+  const a=p.sw*DEG,dx=Math.sin(a)*S.d,dy=Math.cos(a);
+  // Seat the handle in the visible fist, not on the wrist joint: curled
+  // fingers close ~1.4 past the wrist along the forearm (elbow->wrist),
+  // which runs parallel to the blade in sword poses. Relic grip spans
+  // x 6..11 (center 8.5), so offset -8.5 lands the handle center on that point.
+  const ex=S.hF[0]-S.eF[0], ey=S.hF[1]-S.eF[1], el=Math.hypot(ex,ey)||1;
+  const hx=S.hF[0]+ex/el*1.4, hy=S.hF[1]+ey/el*1.4;
+  g.save();g.translate(hx,hy);g.rotate(Math.atan2(dy,dx)-Math.PI);g.scale(len/18,.8);drawRelicSword(-8.5,0,clock);g.restore();
+  return [S.hF[0]+dx*len,S.hF[1]+dy*len];
 }
 const HERO={skin:'#dc9a66',skinD:'#a8683e',pants:'#ebe1c8',pantsD:'#a99d84',vest:'#2e4fa4',vestD:'#1f3574',sash:'#c42424',hair:'#1e0f06',band:'#d42a2a'};
 
