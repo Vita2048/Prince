@@ -206,14 +206,14 @@ function stopMusic(){
 /* ============================================================
    LEVEL  —  5 x 2 rooms, each 10 x 3 tiles
    ' ' open air   '#' stone block   '-' floor     '|' pillar
-   '~' loose floor  '^' spikes      '/' blade trap 't' floor + torch
+   '~' loose floor  '^' spikes      '/' blade trap 'v' pendulum axe 't' floor + torch
    '1'..'9' pressure plate (opens gate/door with same id)
    '!' drop plate (closes gate 1)   'A','B' gates id 1,2   'E' great door (id 5)
    's' sword   'p' small potion   'P' life potion
    ============================================================ */
 const LEVEL=[
  "##########"+"#ps--  ###"+"##########"+"##########"+"##########",
- "#-t--- t--"+"--1-t--~--"+"--A!--|-t-"+"--tE- B---"+"--t--|- -P",
+ "#-t--- t--"+"--1-t--~--"+"--A!--|-t-"+"--tE- B-v-"+"--t--|- -P",
  "######---#"+"#######-##"+"##########"+"#####--- #"+"#######5-#",
  "##########"+"##########"+"#p2-t-^-~-"+"--t-/- |-#"+"##########",
  "##########"+"##########"+"########-#"+"###-t-p-##"+"##########",
@@ -232,6 +232,7 @@ const HINTS={
  "21,1":"J TO STRIKE    K TO BLOCK    S TO SHEATHE",
  "32,1":"THE GREAT DOOR IS SEALED",
  "37,2":"FALLING ONE FLOOR IS SAFE. TWO FLOORS HURTS",
+ "36,1":"WAIT OUTSIDE THE BRASS MARKS. FOLLOW THE AXE AS IT SWINGS AWAY",
  "28,3":"SPIKES! HOLD SHIFT AND STEP SLOWLY, OR JUMP",
  "35,3":"THE BLADES SNAP IN RHYTHM. TIME YOUR RUN",
  "22,3":"THIS PLATE OPENS THE GATE UPSTAIRS",
@@ -244,14 +245,14 @@ const GUARD_DEFS=[
 ];
 const START={c:2,r:1,dir:1};
 
-let T, LW, LH, gates, buttons, looses, fallers, items, torches, spikes, choppers, door, rubble, hintSeen;
+let T, LW, LH, gates, buttons, looses, fallers, items, torches, spikes, choppers, pendulums, door, rubble, hintSeen;
 function K(c,r){return c+','+r;}
 let cacheDirty=true;
 
 function loadLevel(){
   LH=LEVEL.length; LW=LEVEL[0].length;
   T=LEVEL.map(s=>s.split(''));
-  gates={}; buttons={}; looses={}; fallers=[]; items=[]; torches=[]; spikes={}; choppers={}; door=null; rubble=new Set(); hintSeen={};
+  gates={}; buttons={}; looses={}; fallers=[]; items=[]; torches=[]; spikes={}; choppers={}; pendulums={}; door=null; rubble=new Set(); hintSeen={};
   for(let r=0;r<LH;r++) for(let c=0;c<LW;c++){
     const ch=T[r][c], k=K(c,r);
     if(ch==='t'){ torches.push({c,r,seed:(c*13+r*7)%17}); T[r][c]='-'; }
@@ -263,6 +264,7 @@ function loadLevel(){
     else if(ch==='~'){ looses[k]={c,r,trig:false,t:0,wob:0}; }
     else if(ch==='^'){ spikes[k]={c,r,out:0,hold:0,bloody:false}; }
     else if(ch==='/'){ choppers[k]={c,r,ph:Math.random()*1.5,close:0,bloody:false,active:false}; }
+    else if(ch==='v'){ pendulums[k]={c,r,time:0,bloody:false}; }
   }
   cacheDirty=true;
 }
@@ -326,8 +328,8 @@ function drawBack(cx,c,r,x,y){
   cx.restore();
 }
 
-function drawStone(cx,R,x,y,w,h){
-  const base=mix(STONE_D,STONE_L,R()*0.85+(R()<0.1?0.15:0));
+function drawStone(cx,R,x,y,w,h,material){
+  const base=mix(material.dark,material.light,R()*.72);
   const stone=cx.createLinearGradient(x,y,x+w,y+h);
   stone.addColorStop(0,rgb(shade(base,13)));stone.addColorStop(.45,rgb(base));stone.addColorStop(1,rgb(shade(base,-19)));
   cx.fillStyle=stone; cx.fillRect(x,y,w,h);
@@ -349,13 +351,14 @@ function drawStone(cx,R,x,y,w,h){
 
 function drawWall(cx,c,r,x,y){
   const R=rng(c*7919+r*104729+17);
+  const material=masonryAt(c,r);
   const top=y-7, bot=y+TH;
   cx.save(); cx.beginPath(); cx.rect(x,top-2,TW,bot-top+2); cx.clip();
   cx.fillStyle=PAL.mortar; cx.fillRect(x,top,TW,bot-top);
   const courses=[[top,17],[top+17,17],[top+34,18],[top+52,18]];
   courses.forEach(([cy,h],i)=>{
     let sx=x-((r*4+i+c)%2?10:2)-Math.floor(R()*4);
-    while(sx<x+TW){ const w=11+Math.floor(R()*12); drawStone(cx,R,sx+1,cy+1,w-1,h-1); sx+=w; }
+    while(sx<x+TW){ const w=11+Math.floor(R()*12); drawStone(cx,R,sx+1,cy+1,w-1,h-1,material); sx+=w; }
   });
   // Recessed royal seal carved into selected uninterrupted masonry panels.
   if(c%9===4&&r%3===0&&tile(c-1,r)==='#'&&tile(c+1,r)==='#'){
@@ -383,10 +386,14 @@ function drawWall(cx,c,r,x,y){
 
 function drawFloor(cx,c,r,x,y,seedOff=0){
   const R=rng(c*31337+r*977+5+seedOff);
+  const material=masonryAt(c,r);
   const ts=y+53;
   cx.fillStyle=gradient(cx,0,ts,0,4,[[0,PAL.topHi],[.2,PAL.top],[1,PAL.topLo]]);cx.fillRect(x,ts,TW,4);
   cx.fillStyle=gradient(cx,0,ts+4,0,9,[[0,PAL.frontHi],[.14,PAL.front],[1,PAL.under]]);cx.fillRect(x,ts+4,TW,9);
   line(cx,[[x,ts+.2],[x+TW,ts+.2]],'#d1c8a6',.35);
+  // Broad, matte stone face and a crisp lip distinguish the collision surface.
+  cx.fillStyle=gradient(cx,0,ts+4,0,9,[[0,material.face],[1,'#1b2930']]);cx.fillRect(x,ts+4.4,TW,8.6);
+  line(cx,[[x,ts+3.7],[x+TW,ts+3.7]],'#101c24',.65);
   const seam=x+10+R()*14;
   line(cx,[[seam,ts+4.3],[seam+.3,ts+8],[seam-.4,ts+12]],'#202f3c',.45);
   line(cx,[[seam+.6,ts+5],[seam+.9,ts+11]],'rgba(175,183,175,.15)',.25);
@@ -403,10 +410,19 @@ function drawFloor(cx,c,r,x,y,seedOff=0){
     else jewel(cx,x+16,ts+5.2,.32,'#d4bc82');
   }
   if(R()<.25)line(cx,[[x+3,ts+1],[x+5,ts+1.4],[x+6,ts+2.4]],'#4f6066',.23);
+  if(seedOff===3){
+    // A split joint stays legible before the slab begins to shake.
+    line(cx,[[x+8,ts+.5],[x+11,ts+1.5],[x+10,ts+3.5],[x+14,ts+5],[x+13,ts+9]],'#17262b',.65);
+    line(cx,[[x+11.4,ts+2],[x+11,ts+3.7],[x+14.6,ts+5.1]],'#c3b591',.3);
+  }
   const openL=!ground(c-1,r)&&tile(c-1,r)!=='#', openR=!ground(c+1,r)&&tile(c+1,r)!=='#';
   if(openL){ cx.fillStyle='#2a3048'; cx.fillRect(x,ts+1,1,12); cx.fillStyle=PAL.topHi; cx.fillRect(x+1,ts,1,5); }
   else { cx.fillStyle='#293c46'; cx.fillRect(x,ts+4,.35,7); }
   if(openR){ cx.fillStyle='#1e2236'; cx.fillRect(x+TW-2,ts+1,2,12); cx.fillStyle='#333a56'; cx.fillRect(x+TW-3,ts+4,1,7); }
+  for(const edge of [openL?x+1:null,openR?x+TW-2:null])if(edge!==null){
+    line(cx,[[edge,ts+.3],[edge,ts+3.1]],'#e4d7b4',.6);
+    line(cx,[[edge,ts+4.2],[edge,ts+9]],'#83938a',.35);
+  }
 }
 
 function palaceArch(cx,x,y,inset=0){
@@ -530,6 +546,19 @@ const WINGS=[
   {name:'SEALED FOUNDATIONS',stone:'#34434a',trim:'#526065',fabric:'#35474a',sky:false}
 ];
 function wingAt(c,r){return WINGS[clamp(Math.floor(r/3)*5+Math.floor(c/10),0,9)];}
+const MASONRY=[
+  {dark:[35,45,51],light:[79,91,91],face:'#687b7c'},
+  {dark:[39,42,53],light:[81,83,100],face:'#747889'},
+  {dark:[47,39,37],light:[95,80,66],face:'#867562'},
+  {dark:[49,46,39],light:[111,103,80],face:'#a09373'},
+  {dark:[32,47,42],light:[78,97,81],face:'#708c7d'},
+  {dark:[25,34,39],light:[51,65,70],face:'#4a6269'},
+  {dark:[25,34,39],light:[51,65,70],face:'#4a6269'},
+  {dark:[24,43,45],light:[59,83,80],face:'#587e7c'},
+  {dark:[43,33,30],light:[89,70,57],face:'#826c59'},
+  {dark:[25,34,39],light:[51,65,70],face:'#4a6269'}
+];
+function masonryAt(c,r){return MASONRY[clamp(Math.floor(r/3)*5+Math.floor(c/10),0,9)];}
 const distantCache=new Map();
 const vistaMotion={x:0,y:0};
 function distantCanvas(rx,ry){
@@ -671,7 +700,7 @@ function drawLandmark(cx,x,y,kind){
 }
 const LANDMARKS={
   '4,1':'lion','14,1':'vase','18,1':'cypress','20,1':'lion',
-  '30,1':'brazier','38,1':'brazier','40,1':'fountain',
+  '30,1':'brazier','40,1':'fountain',
   '24,3':'cistern','34,3':'forge'
 };
 function landmarkAt(c,r){return LANDMARKS[c+','+r]||null;}
@@ -771,7 +800,7 @@ function drawRecess(cx,c,r,x,y){
     for(const [ins,col,lw] of [[5,'#101f29',2.5],[6,W.stone,1.7],[7.5,W.trim,.35]]){archPath(cx,bx+ins,y+5,64-ins*2,48);cx.strokeStyle=col;cx.lineWidth=lw;cx.stroke();}
     cx.save();archPath(cx,bx+8,y+6,48,46);cx.clip();
     if(rx===1){
-      for(let k=-8;k<15;k++){line(cx,[[bx+k*6,y+3],[bx+k*6+48,y+54]],'#54616a',.45);line(cx,[[bx+k*6,y+54],[bx+k*6+48,y+3]],'#54616a',.45);}
+      for(let k=-8;k<15;k++){line(cx,[[bx+k*6,y+3],[bx+k*6+48,y+54]],'#344750',.28);line(cx,[[bx+k*6,y+54],[bx+k*6+48,y+3]],'#344750',.28);}
       if(!landmarkAt(c,r))jewel(cx,bx+32,y+26,1,'#b7ccc8');
     }else if(rx===3){
       const sx=bx+32,sy=y+24,rad=10;
@@ -782,8 +811,8 @@ function drawRecess(cx,c,r,x,y){
       shape(cx,[[bx+43,y+7],[bx+47,y+7],[bx+24,y+50],[bx+8,y+50]],gradient(cx,0,y,0,50,[[0,'rgba(173,202,207,.08)'],[1,'rgba(173,202,207,0)']]));
     }else{
       const bars=rx===4?5:4;
-      for(let k=0;k<bars;k++){const xx=bx+16+k*(32/(bars-1));line(cx,[[xx,y+14],[xx,y+46]],rx===4?'#3f655c':'#5c7080',.45);}
-      line(cx,[[bx+14,y+30],[bx+50,y+30]],'#7d8e86',.32);
+      for(let k=0;k<bars;k++){const xx=bx+16+k*(32/(bars-1));line(cx,[[xx,y+14],[xx,y+46]],rx===4?'#304d47':'#394f5e',.35);}
+      line(cx,[[bx+14,y+30],[bx+50,y+30]],'#52665f',.25);
       shape(cx,[[bx+43,y+7],[bx+47,y+7],[bx+24,y+50],[bx+8,y+50]],gradient(cx,0,y,0,50,[[0,'rgba(173,202,207,.07)'],[1,'rgba(173,202,207,0)']]));
     }
     if(!landmarkAt(c,r))line(cx,[[bx+12,y+44],[bx+52,y+44]],'#8ea09a',.4);
@@ -791,7 +820,7 @@ function drawRecess(cx,c,r,x,y){
   }else{
     archPath(cx,bx+10,y+7,44,46);cx.fillStyle='#101f29';cx.fill();cx.strokeStyle=W.stone;cx.lineWidth=1.1;cx.stroke();
     cx.save();archPath(cx,bx+11,y+8,42,44);cx.clip();
-    for(let k=0;k<5;k++)line(cx,[[bx+12,y+22+k*5.5],[bx+52,y+22+k*5.5]],'rgba(168,196,196,.22)',.4);
+    for(let k=0;k<5;k++)line(cx,[[bx+12,y+22+k*5.5],[bx+52,y+22+k*5.5]],'rgba(168,196,196,.11)',.3);
     if(bay%2===0&&!landmarkAt(c,r)){rosette(cx,bx+32,y+24,5.5,W.trim);rosette(cx,bx+32,y+24,2.8,'#b7c2b4');jewel(cx,bx+32,y+24,.95,'#8fd0c8');}
     cx.restore();
   }
@@ -858,7 +887,7 @@ function drawLivingDecor(rx,ry,t){
         g.globalAlpha=.35+.12*Math.sin(t*7);disc(xx-2,y+46,2.2,'#ff7a32');
         g.restore();
       }
-      if(wantsHangingLamp(c,r))drawHangingLamp((Math.floor(c/2)%5)===3?bx+22:bx+32,y,t,c+r*5);
+      if(!pendulums[K(c,r)]&&!pendulums[K(c+1,r)]&&wantsHangingLamp(c,r))drawHangingLamp((Math.floor(c/2)%5)===3?bx+22:bx+32,y,t,c+r*5);
     }else if(mode==='left'&&nicheKind(c,r)==='lamp')drawNicheFlame(bx+16,y,t,c);
     else if(mode==='right'&&nicheKind(c+1,r)==='lamp')drawNicheFlame(bx+TW+16,y,t,c+1);
     g.restore();
@@ -981,7 +1010,7 @@ function drawPillar(x,y){
   g.fillStyle=gradient(g,x+8,y,16,0,[[0,'#182c3b'],[.3,'#82999e'],[.48,'#a9b5ad'],[.7,'#4e6a76'],[1,'#122836']]);g.fillRect(x+10,y-3,12,49);
   for(let k=0;k<6;k++){line(g,[[x+11+k*1.8,y+5],[x+11+k*1.8,y+38]],'#233e4d',.3);line(g,[[x+11.45+k*1.8,y+5],[x+11.45+k*1.8,y+38]],'#bec6b4',.2);}
   for(const [yy,w,h] of [[y-7,21,3],[y-4,17,3],[y+1,15,3],[y+39,15,3],[y+43,18,3],[y+46,21,7]]){
-    g.fillStyle=steel(g,x+16-w/2,yy,w,h,true);g.fillRect(x+16-w/2,yy,w,h);line(g,[[x+16-w/2,yy],[x+16+w/2,yy]],'#bdac7e',.45);
+    g.fillStyle=gradient(g,x+16-w/2,yy,w,0,[[0,'#394d52'],[.35,'#939b88'],[.65,'#737e72'],[1,'#263e46']]);g.fillRect(x+16-w/2,yy,w,h);line(g,[[x+16-w/2,yy],[x+16+w/2,yy]],'#bdac7e',.45);
     for(let k=0;k<5;k++)rosette(g,x+16-w/2+2+k*(w-4)/4,yy+h/2,.8,'#af9b6e');
   }
   for(let k=0;k<3;k++){g.strokeStyle='rgba(213,226,214,.18)';g.lineWidth=.25;g.beginPath();g.moveTo(x+12+k*3,y+7);g.bezierCurveTo(x+9+k*3,y+17,x+18+k,y+24,x+12+k*2,y+37);g.stroke();}
@@ -1082,6 +1111,75 @@ function drawChopper(x,y,cl,bloody,warning=0){
   blade(top,up,false);blade(lo,y+54,true);
   if(cl>.88){g.globalCompositeOperation='lighter';drawGlow(x+18,y+30,7,(cl-.88)*.75,'200,224,234');}
   g.restore();
+}
+
+// Geometry is shared by drawing and collision. The cutting head follows a
+// four-second pendulum cycle; its stem is not a damaging surface.
+const PENDULUM={length:42,amplitude:1.5,period:4,radius:8,reach:56};
+function pendulumPose(p,time=p.time){
+  const angle=Math.cos(time*Math.PI*2/PENDULUM.period)*PENDULUM.amplitude;
+  const px=p.c*TW+16,py=p.r*TH+3;
+  return {px,py,angle,x:px+Math.sin(angle)*PENDULUM.length,y:py+Math.cos(angle)*PENDULUM.length};
+}
+function drawPendulum(p){
+  const b=pendulumPose(p),fy=floorY(p.r);
+  g.save();
+  // Brass end marks are outside the head's entire sweep, including body width.
+  for(const d of [-1,1]){
+    const xx=b.px+d*PENDULUM.reach;
+    line(g,[[xx,fy-3],[xx,fy-1]],'#e0bd76',1.1);
+    line(g,[[xx-d*3,fy-2],[xx-d*1.5,fy-3.4],[xx,fy-2]],'#b89961',.45);
+  }
+  g.fillStyle='rgba(1,8,14,.35)';g.beginPath();g.ellipse(b.x,fy-1,9,1.1,0,0,Math.PI*2);g.fill();
+  g.fillStyle=steel(g,b.px-7,b.py-5,14,7,true);g.fillRect(b.px-7,b.py-5,14,7);
+  for(const d of [-1,1])rivet(g,b.px+d*5,b.py-2,.65);
+  g.translate(b.px,b.py);g.rotate(-b.angle);
+  line(g,[[1,1],[1,42]],'#08131c',3.6);
+  line(g,[[0,0],[0,42]],'#677e88',2.3);
+  line(g,[[-.65,2],[-.65,37]],'#c1c7b2',.45);
+  for(let yy=7;yy<37;yy+=6){g.fillStyle='#796544';g.fillRect(-1.5,yy,3,1);}
+  // Forged crescent axe: dark spine, broad steel face, bright cutting bevel.
+  g.beginPath();g.moveTo(-4,35);g.quadraticCurveTo(-7,34,-10,38);
+  g.bezierCurveTo(-11,47,-6,52,0,52);g.bezierCurveTo(6,52,11,47,10,38);
+  g.quadraticCurveTo(7,34,4,35);g.lineTo(2,40);g.lineTo(-2,40);g.closePath();
+  g.fillStyle=steel(g,-10,35,20,17);g.fill();g.strokeStyle='#10232f';g.lineWidth=.6;g.stroke();
+  g.beginPath();g.moveTo(-9.5,39);g.bezierCurveTo(-10,46,-5,50.8,0,50.8);g.bezierCurveTo(5,50.8,10,46,9.5,39);
+  g.strokeStyle=p.bloody?'#a55a4c':'#edf0d8';g.lineWidth=1;g.stroke();
+  line(g,[[-6,40],[-4,46],[0,48],[4,46],[6,40]],'#596a70',.45);
+  rivet(g,0,42,1.7);
+  // A small glint follows orientation rather than flashing the whole trap.
+  jewel(g,-6,46,.5+.2*Math.cos(b.angle),'#e9dcc1');
+  g.restore();
+  jewel(g,b.px,b.py,2.6,'#8b754c');rivet(g,b.px,b.py,1);
+}
+function pendulumHits(p,e,fromTime,toTime,previous=e){
+  // Sample relative motion at subpixel blade travel to prevent tunnelling.
+  const travel=Math.hypot(e.x-previous.x,e.y-previous.y);
+  const maxSpeed=PENDULUM.length*PENDULUM.amplitude*Math.PI*2/PENDULUM.period;
+  const steps=Math.max(1,Math.ceil((Math.abs(toTime-fromTime)*maxSpeed+travel)/1.5));
+  const height=['crouch','crouchHop'].includes(e.st)?23:38;
+  for(let i=0;i<=steps;i++){
+    const u=i/steps,b=pendulumPose(p,lerp(fromTime,toTime,u));
+    const ex=lerp(previous.x,e.x,u),ey=lerp(previous.y,e.y,u);
+    const nx=clamp(b.x,ex-4,ex+4),ny=clamp(b.y,ey-height,ey-3);
+    if((b.x-nx)**2+(b.y-ny)**2<PENDULUM.radius**2)return true;
+  }
+  return false;
+}
+function updatePendulums(dt){
+  for(const p of Object.values(pendulums)){
+    const before=p.time;p.time+=dt;
+    const half=PENDULUM.period/2,quarter=half/2;
+    if(Math.floor((before-quarter)/half)!==Math.floor((p.time-quarter)/half)&&inRoomVol(p.c*TW+16,floorY(p.r)))SFX.swish();
+    for(const e of [kid,...guards]){
+      const previous=e.trapPrevious||e,px=p.c*TW+16;
+      if(!alive(e)||Math.min(e.x,previous.x)>px+PENDULUM.reach+8||Math.max(e.x,previous.x)<px-PENDULUM.reach-8)continue;
+      if(!pendulumHits(p,e,before,p.time,previous))continue;
+      p.bloody=true;
+      if(e===kid){killKid('pendulum');flash('190,45,30');SFX.impale();}
+      else{e.hp=0;e.vx=0;setSt(e,'die');blood(e.x,e.y-24,-e.dir,12);SFX.hit();}
+    }
+  }
 }
 
 function drawDoorPanel(x,y,open){
@@ -1233,9 +1331,9 @@ const PS={
  stand:  P({tor:2,fT:4,fS:0,bT:-4,bS:-3,fU:6,fF:14,bU:-5,bF:6}),
  breathe:P({tor:3,fT:4,fS:0,bT:-4,bS:-3,fU:7,fF:16,bU:-4,bF:8}),
  turn:   P({tor:0,fT:1,fS:0,bT:-1,bS:0,fU:0,fF:8,bU:0,bF:8}),
- r1:P({tor:12,fT:38,fS:18,bT:-32,bS:-72,fU:-40,fF:-8,bU:40,bF:85}),
+ r1:P({tor:15,fT:38,fS:18,bT:-32,bS:-72,fU:-49,fF:-15,bU:49,bF:91}),
  r2:P({tor:12,fT:0,fS:-12,bT:18,bS:-82,fU:-5,fF:30,bU:5,bF:45}),
- r3:P({tor:12,fT:-32,fS:-72,bT:38,bS:18,fU:40,fF:85,bU:-40,bF:-8}),
+ r3:P({tor:15,fT:-32,fS:-72,bT:38,bS:18,fU:49,fF:91,bU:-49,bF:-15}),
  r4:P({tor:12,fT:18,fS:-82,bT:0,bS:-12,fU:5,fF:45,bU:-5,bF:30}),
  runStart:P({tor:18,fT:24,fS:-16,bT:-14,bS:-38,fU:-25,fF:5,bU:25,bF:55}),
  skid:  P({tor:-14,fT:44,fS:36,bT:-6,bS:-50,fU:38,fF:75,bU:28,bF:62}),
@@ -1244,9 +1342,9 @@ const PS={
  crouch:P({tor:28,fT:88,fS:-42,bT:62,bS:-72,fU:35,fF:60,bU:20,bF:45}),
  jprep: P({tor:26,fT:44,fS:-30,bT:20,bS:-48,fU:-55,fF:-30,bU:-45,bF:-20}),
  sjump: P({tor:14,fT:62,fS:8,bT:-22,bS:-78,fU:115,fF:135,bU:95,bF:118,gnd:0,hy:23}),
- rjump: P({tor:16,fT:84,fS:54,bT:-58,bS:-100,fU:150,fF:162,bU:-55,bF:-30,gnd:0,hy:21}),
+ rjump: P({tor:19,fT:88,fS:56,bT:-64,bS:-104,fU:145,fF:164,bU:-65,bF:-36,gnd:0,hy:21}),
  fall:  P({tor:0,fT:18,fS:-22,bT:-10,bS:-44,fU:158,fF:172,bU:148,bF:168,gnd:0,hy:24}),
- land:  P({tor:24,fT:62,fS:-28,bT:32,bS:-55,fU:40,fF:72,bU:28,bF:58}),
+ land:  P({tor:29,fT:65,fS:-30,bT:35,bS:-58,fU:48,fF:77,bU:19,bF:49}),
  reach: P({tor:0,fT:6,fS:0,bT:-6,bS:-8,fU:176,fF:180,bU:172,bF:178,gnd:0,hy:22}),
  hang:  P({tor:-4,fT:6,fS:-6,bT:-6,bS:-18,fU:178,fF:180,bU:175,bF:179,gnd:0,hy:29}),
  hang2: P({tor:-2,fT:10,fS:-2,bT:-10,bS:-24,fU:177,fF:180,bU:176,bF:180,gnd:0,hy:29}),
@@ -1604,6 +1702,8 @@ function landed(e,rr){
   if(rows>=1) for(const dc of [-1,1]) if(tile(c+dc,rr)==='~') triggerLoose(c+dc,rr);
   if(rows>=2){ e.vx=0; SFX.thud(); shake(0.25); if(!hurtKid(1,'fall')) setSt(e,'landHard'); return; }
   SFX.land();
+  // Short, low dust puffs communicate weight without obscuring the feet.
+  for(const d of [-1,1])for(let i=0;i<3;i++)addP(e.x+d*(2+i),e.y-1,d*(10+i*5),-5-i*3,.22+i*.04,'#a69b80',55);
   if(e.jt==='run'&&(e.dir>0?keys.right:keys.left)&&!keys.shift){ setSt(e,'run'); e.t=0.3; e.vx=e.dir*RUNV*0.85; return; }
   e.vx=0; setSt(e,'land');
 }
@@ -1662,12 +1762,12 @@ function hurtKid(n,why){
 function killKid(why){
   if(kid.st==='dead') return;
   kid.hp=0; kid.deathBy=why; kid.armed=false; kid.vx=0; setSt(kid,'dead'); deaths++;
-  if(why==='chomp'||why==='sword'||why==='spikes') blood(kid.x,kid.y-24,-kid.dir,18);
+  if(why==='chomp'||why==='sword'||why==='spikes'||why==='pendulum') blood(kid.x,kid.y-24,-kid.dir,18);
   setTimeout(()=>SFX.death(),350);
 }
 function flash(col){ flashT=0.25; flashCol=col; }
 function atDoor(k){ return door&&door.open>0.95&&rowOf(k.y)===door.r&&Math.abs(k.x-(door.c*TW+16))<18; }
-function nearBlade(k){ const c=colOf(k.x), r=rowOf(k.y); for(const cc of [c-1,c,c+1]) if(tile(cc,r)==='/'&&Math.abs(k.x-(cc*TW+18))<22) return true; return false; }
+function nearBlade(k){ const c=colOf(k.x), r=rowOf(k.y); for(const cc of [c-1,c,c+1]) if(tile(cc,r)==='/'&&Math.abs(k.x-(cc*TW+18))<22) return true; return Object.values(pendulums).some(p=>p.r===r&&Math.abs(k.x-(p.c*TW+16))<PENDULUM.reach+16); }
 function spikeCheck(k){
   const c=colOf(k.x), r=rowOf(k.y), key=K(c,r), sp=spikes[key];
   if(!sp){ k.spikeSafe=null; return false; }
@@ -1851,6 +1951,7 @@ function resolvePunch(k){
 function barrierBetween(a,b){
   const r=rowOf(a.y); if(rowOf(b.y)!==r) return false;
   const c0=Math.min(colOf(a.x),colOf(b.x)), c1=Math.max(colOf(a.x),colOf(b.x));
+  if(Object.values(pendulums).some(p=>p.r===r&&(a.x-(p.c*TW+16))*(b.x-(p.c*TW+16))<=0))return true;
   for(let c=c0;c<=c1;c++){
     if(tile(c,r)==='/'){ const cx=c*TW+18; if((a.x-cx)*(b.x-cx)<=0) return true; }
     const gt=gateAt(c,r); if(gt&&gateBlocks(gt)){ const gx=c*TW+25; if((a.x-gx)*(b.x-gx)<=0) return true; }
@@ -1859,6 +1960,7 @@ function barrierBetween(a,b){
 }
 function safeAhead(e,s){
   const x=e.x+s*16, c=colOf(x), r=rowOf(e.y), t=tile(c,r);
+  if(Object.values(pendulums).some(p=>p.r===r&&Math.abs(x-(p.c*TW+16))<PENDULUM.reach))return false;
   if(!ground(c,r)||t==='#'||t==='^'||t==='/') return false;
   if(tile(c-1,r)==='/'||tile(c+1,r)==='/') return false; // keep clear of blade traps
   for(const k in gates){ const gt=gates[k]; if(gt.r===r&&gateBlocks(gt)){ const gx=gt.c*TW+25; if((e.x-gx)*(x-gx)<=0) return false; } }
@@ -1908,6 +2010,7 @@ function pressButton(b){
 }
 function triggerLoose(c,r){ const L=looses[K(c,r)]; if(L&&!L.trig){ L.trig=true; L.t=0; } }
 function updateTraps(dt){
+  updatePendulums(dt);
   for(const k in buttons){ const b=buttons[k];
     let occ=b.stuck||onTile(kid,b.c,b.r);
     if(occ&&!b.pressed){ b.pressed=true; pressButton(b); } else if(!occ&&b.pressed) b.pressed=false;
@@ -1924,7 +2027,10 @@ function updateTraps(dt){
   for(const k in looses){ const L=looses[k];
     if(onTile(kid,L.c,L.r)||(kid.st==='hang'&&kid.hang&&kid.hang.cl===L.c&&kid.hang.rr===L.r)) triggerLoose(L.c,L.r);
     if(!L.trig){ L.wob=Math.max(0,L.wob-dt); if(alive(kid)&&rowOf(kid.y)===L.r&&Math.abs(kid.x-(L.c*TW+16))<70&&Math.random()<dt*0.6){ L.wob=0.18; if(inRoomVol(L.c*TW,floorY(L.r))) SFX.shake(); } continue; }
-    L.t+=dt; if(Math.floor(L.t*12)!==Math.floor((L.t-dt)*12)) SFX.shake();
+    L.t+=dt; if(Math.floor(L.t*12)!==Math.floor((L.t-dt)*12)){
+      SFX.shake();
+      for(const dx of [2,29])addP(L.c*TW+dx,floorY(L.r)+4,dx<16?-3:3,8,.45,'#b0a086',65);
+    }
     if(L.t>0.5){ T[L.r][L.c]=' '; delete looses[k]; cacheDirty=true; fallers.push({c:L.c,r:L.r,y:floorY(L.r),vy:0,hit:false}); }
   }
   for(let i=fallers.length-1;i>=0;i--){ const f=fallers[i];
@@ -2119,6 +2225,8 @@ function renderWorld(){
     else if(ch==='^'){ const sp=spikes[key]; drawSpikes(x,y,sp.out,sp.bloody); }
     else if(ch==='/'){ const cp=choppers[key];drawChopper(x,y,cp.close,cp.bloody,cp.active?clamp((cp.ph%1.7-1.42)/.28,0,1):0); }
   }
+  // Include the full sweep at room seams, not just the tile holding the pivot.
+  for(const p of Object.values(pendulums))if(p.r>=r0&&p.r<r0+RH&&p.c*TW+16+PENDULUM.reach>=ox&&p.c*TW+16-PENDULUM.reach<=ox+SW)drawPendulum(p);
   drawAtmosphere(rx,ry,clock);
   g.restore();
   drawPickupPrompt();
@@ -2287,7 +2395,11 @@ function debugGive(type){
 }
 function applyDebugScene(){
   if(!DEBUG) return;
-  if(DEBUG==='drink'||DEBUG==='potion'){
+  if(DEBUG==='pendulum'){
+    debugSpot(36,1,1);gates[K(36,1)].p=0;gates[K(36,1)].mode='hold';gates[K(36,1)].hold=1e9;
+    pendulums[K(38,1)].time=0;
+    showMsg('WAIT AT THE BRASS MARK. RUN BEHIND THE SWINGING AXE',60,'#ffd860');
+  } else if(DEBUG==='drink'||DEBUG==='potion'){
     debugSpot(2,1,1); debugWait=0;
     debugGive('p');
     showMsg('DEBUG drink — looping potion animation (R restarts scene)',60,'#ffd860');
@@ -2328,6 +2440,7 @@ function debugLoop(dt){
 }
 function update(dt){
   playTime+=dt;
+  for(const e of [kid,...guards])e.trapPrevious={x:e.x,y:e.y};
   kidUpdate(dt);
   for(const gd of guards) guardUpdate(gd,dt);
   updateTraps(dt);
@@ -2336,7 +2449,7 @@ function update(dt){
   const [rx,ry]=roomOf(kid);
   if(rx!==cam.rx||ry!==cam.ry){vistaMotion.x=clamp((rx-cam.rx)*9,-9,9);vistaMotion.y=clamp((ry-cam.ry)*4,-4,4);cam.rx=rx;cam.ry=ry;pendingCP=true;}
   vistaMotion.x*=Math.exp(-dt*5);vistaMotion.y*=Math.exp(-dt*5);
-  if(pendingCP&&kid.st==='stand'&&!nearestFoe(kid)&&ground(colOf(kid.x),rowOf(kid.y))){ checkpoint={x:kid.x,y:kid.y,dir:kid.dir}; pendingCP=false; }
+  if(pendingCP&&kid.st==='stand'&&!nearestFoe(kid)&&!nearBlade(kid)&&ground(colOf(kid.x),rowOf(kid.y))){ checkpoint={x:kid.x,y:kid.y,dir:kid.dir}; pendingCP=false; }
   // hints (suppressed on debug routes so the debug banner stays readable)
   if(!DEBUG&&alive(kid)&&GROUND_ST.has(kid.st)){ const key=K(colOf(kid.x),rowOf(kid.y));
     if(HINTS[key]&&!hintSeen[key]){ let ok=true;
