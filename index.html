@@ -328,8 +328,8 @@ function drawBack(cx,c,r,x,y){
   cx.restore();
 }
 
-function drawStone(cx,R,x,y,w,h,material){
-  const base=mix(material.dark,material.light,R()*.72);
+function drawStone(cx,R,x,y,w,h){
+  const base=mix(STONE_D,STONE_L,R()*0.85+(R()<0.1?0.15:0));
   const stone=cx.createLinearGradient(x,y,x+w,y+h);
   stone.addColorStop(0,rgb(shade(base,13)));stone.addColorStop(.45,rgb(base));stone.addColorStop(1,rgb(shade(base,-19)));
   cx.fillStyle=stone; cx.fillRect(x,y,w,h);
@@ -351,14 +351,13 @@ function drawStone(cx,R,x,y,w,h,material){
 
 function drawWall(cx,c,r,x,y){
   const R=rng(c*7919+r*104729+17);
-  const material=masonryAt(c,r);
   const top=y-7, bot=y+TH;
   cx.save(); cx.beginPath(); cx.rect(x,top-2,TW,bot-top+2); cx.clip();
   cx.fillStyle=PAL.mortar; cx.fillRect(x,top,TW,bot-top);
   const courses=[[top,17],[top+17,17],[top+34,18],[top+52,18]];
   courses.forEach(([cy,h],i)=>{
     let sx=x-((r*4+i+c)%2?10:2)-Math.floor(R()*4);
-    while(sx<x+TW){ const w=11+Math.floor(R()*12); drawStone(cx,R,sx+1,cy+1,w-1,h-1,material); sx+=w; }
+    while(sx<x+TW){ const w=11+Math.floor(R()*12); drawStone(cx,R,sx+1,cy+1,w-1,h-1); sx+=w; }
   });
   // Recessed royal seal carved into selected uninterrupted masonry panels.
   if(c%9===4&&r%3===0&&tile(c-1,r)==='#'&&tile(c+1,r)==='#'){
@@ -386,14 +385,10 @@ function drawWall(cx,c,r,x,y){
 
 function drawFloor(cx,c,r,x,y,seedOff=0){
   const R=rng(c*31337+r*977+5+seedOff);
-  const material=masonryAt(c,r);
   const ts=y+53;
   cx.fillStyle=gradient(cx,0,ts,0,4,[[0,PAL.topHi],[.2,PAL.top],[1,PAL.topLo]]);cx.fillRect(x,ts,TW,4);
   cx.fillStyle=gradient(cx,0,ts+4,0,9,[[0,PAL.frontHi],[.14,PAL.front],[1,PAL.under]]);cx.fillRect(x,ts+4,TW,9);
   line(cx,[[x,ts+.2],[x+TW,ts+.2]],'#d1c8a6',.35);
-  // Broad, matte stone face and a crisp lip distinguish the collision surface.
-  cx.fillStyle=gradient(cx,0,ts+4,0,9,[[0,material.face],[1,'#1b2930']]);cx.fillRect(x,ts+4.4,TW,8.6);
-  line(cx,[[x,ts+3.7],[x+TW,ts+3.7]],'#101c24',.65);
   const seam=x+10+R()*14;
   line(cx,[[seam,ts+4.3],[seam+.3,ts+8],[seam-.4,ts+12]],'#202f3c',.45);
   line(cx,[[seam+.6,ts+5],[seam+.9,ts+11]],'rgba(175,183,175,.15)',.25);
@@ -546,19 +541,6 @@ const WINGS=[
   {name:'SEALED FOUNDATIONS',stone:'#34434a',trim:'#526065',fabric:'#35474a',sky:false}
 ];
 function wingAt(c,r){return WINGS[clamp(Math.floor(r/3)*5+Math.floor(c/10),0,9)];}
-const MASONRY=[
-  {dark:[35,45,51],light:[79,91,91],face:'#687b7c'},
-  {dark:[39,42,53],light:[81,83,100],face:'#747889'},
-  {dark:[47,39,37],light:[95,80,66],face:'#867562'},
-  {dark:[49,46,39],light:[111,103,80],face:'#a09373'},
-  {dark:[32,47,42],light:[78,97,81],face:'#708c7d'},
-  {dark:[25,34,39],light:[51,65,70],face:'#4a6269'},
-  {dark:[25,34,39],light:[51,65,70],face:'#4a6269'},
-  {dark:[24,43,45],light:[59,83,80],face:'#587e7c'},
-  {dark:[43,33,30],light:[89,70,57],face:'#826c59'},
-  {dark:[25,34,39],light:[51,65,70],face:'#4a6269'}
-];
-function masonryAt(c,r){return MASONRY[clamp(Math.floor(r/3)*5+Math.floor(c/10),0,9)];}
 const distantCache=new Map();
 const vistaMotion={x:0,y:0};
 function distantCanvas(rx,ry){
