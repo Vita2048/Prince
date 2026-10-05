@@ -1647,8 +1647,13 @@ function moveX(e,dx,air){
     if(s>0&&e.x+5<=gx-2.9&&nx+5>gx-3){ nx=gx-8.01; blocked=true; }
     if(s<0&&e.x-5>=gx+2.9&&nx-5<gx+3){ nx=gx+8.01; blocked=true; } }
   const others=e===kid?guards.filter(alive):(alive(kid)?[kid]:[]);
+  // Sword fighters need a wider personal bubble than brawlers: en-garde
+  // sword tips reach ~34px past center, so centers closer than ~38 would
+  // already drive the blades into the opponent's chest before any strike.
+  // Keep the old tight bubble for unarmed scraps (punch range is ~24).
+  const minSep=(kid&&kid.sword)?38:14;
   for(const o of others){ if(rowOf(o.y)!==r||o.st==='hang'||o.st==='climb') continue; const od=o.x-e.x;
-    if(Math.sign(od)===s&&Math.abs(od)>=13.5&&Math.abs(o.x-nx)<14){ nx=o.x-s*14; blocked=true; } }
+    if(Math.sign(od)===s&&Math.abs(od)>=minSep-0.5&&Math.abs(o.x-nx)<minSep){ nx=o.x-s*minSep; blocked=true; } }
   e.x=nx; return blocked;
 }
 function startFall(e,vx){ setSt(e,'fall'); e.vx=vx; e.vy=0; e.fallStart=e.y; e.jt='fall'; }
@@ -1722,7 +1727,14 @@ function startStep(k){
 }
 function tryPickup(k){
   const r=rowOf(k.y); const it=items.find(i=>i.r===r&&Math.abs(i.c*TW+16-k.x)<30);
-  if(!it) return false; faceTo(k,{x:it.c*TW+16+(it.c*TW+16===k.x?k.dir:0)}); k.item=it; k.itemTaken=false; k.potionDone=false; setSt(k,'pickup'); return true;
+  if(!it) return false; faceTo(k,{x:it.c*TW+16+(it.c*TW+16===k.x?k.dir:0)});
+  // Shuffle so the grab hand lands on the item: in PS.grab the front hand
+  // sits ~23px ahead of center (~14.5px for a sword handle at +8.5).
+  const ix=it.c*TW+16, grabDX=it.type==='s'?14.5:23;
+  let tx=ix-k.dir*grabDX;
+  if(!ground(colOf(tx),r)) tx=k.x; // never shuffle off an edge
+  k.pickupFrom=k.x; k.pickupTo=tx;
+  k.item=it; k.itemTaken=false; k.potionDone=false; setSt(k,'pickup'); return true;
 }
 function takeItem(k,it){
   items.splice(items.indexOf(it),1);
@@ -1858,9 +1870,12 @@ function kidUpdate(dt){
   case 'landHard': if(k.t>0.8) setSt(k,'stand'); break;
   case 'pickup': {
     const it=k.item, isS=it.type==='s';
+    // Ease to the aligned grab spot while bending down (t<0.3), via moveX so
+    // walls and gates still block the shuffle.
+    if(k.pickupTo!=null&&k.t<0.3){ const u=clamp(k.t/0.3,0,1), s=u*u*(3-2*u); moveX(k,(k.pickupFrom+(k.pickupTo-k.pickupFrom)*s)-k.x); }
     if(k.t>0.38&&!k.itemTaken){ k.itemTaken=true; takeItem(k,it); }
     if(!isS&&k.t>1.35&&!k.potionDone){ k.potionDone=true; finishPotion(k,it); }
-    if(k.t>(isS?1.6:1.9)){ k.item=null; setSt(k,'stand'); }
+    if(k.t>(isS?1.6:1.9)){ k.item=null; k.pickupFrom=k.pickupTo=null; setSt(k,'stand'); }
     break; }
   case 'drawSword': if(k.t>0.12) k.armed=true; if(k.t>0.3) setSt(k,'engarde'); break;
   case 'engarde':
@@ -1869,7 +1884,7 @@ function kidUpdate(dt){
     if(pressed.down){ setSt(k,'sheathe'); break; }
     if(pressed.strike){ setSt(k,'strike'); SFX.swish(); break; }
     if(pressed.block||pressed.up){ setSt(k,'block'); break; }
-    if(fwP||fw){ if(!foe||foe.dist>22) setSt(k,'advance'); break; }
+    if(fwP||fw){ if(!foe||foe.dist>40) setSt(k,'advance'); break; }
     if(bkP||bk){ setSt(k,'retreat'); break; }
     break;
   case 'advance':
@@ -1908,9 +1923,11 @@ function resolveStrike(att){
   const def=att===kid?(nearestFoe(kid)||{}).e:kid;
   if(!def||!alive(def)||barrierBetween(att,def)) return;
   const dx=def.x-att.x; if(Math.abs(dx)>2&&Math.sign(dx)!==att.dir) return;
-  if(Math.abs(dx)>40||rowOf(def.y)!==rowOf(att.y)) return;
+  // Sword-tip reach in the lunge pose is ~48px past center; allow hits from
+  // proper fencing distance so fighters don't have to chest-to-chest to land.
+  if(Math.abs(dx)>52||rowOf(def.y)!==rowOf(att.y)) return;
   if(def.st==='hang'||def.st==='climb'||def.st==='fall'||def.st==='air') return;
-  const tipX=att.x+att.dir*Math.min(28,Math.abs(dx)), tipY=att.y-30;
+  const tipX=att.x+att.dir*Math.min(32,Math.abs(dx)), tipY=att.y-30;
   const blocking=def.st==='block'&&def.t<0.34&&def.dir===-att.dir;
   if(blocking){ SFX.clash(); sparks(tipX,tipY); if(att!==kid){ setSt(att,'stagger'); } else { setSt(att,'hurt'); att.t=0.18; } return; }
   if(def===kid){
@@ -1963,11 +1980,16 @@ function guardUpdate(e,dt){
     if(checkFall(e)) break;
     if(!sees) break;
     faceTo(e,kid);
-    if(kid.st==='strike'&&kid.t<0.1&&dist<46){ if(!e.reacted){ e.reacted=true; if(Math.random()<e.block){ setSt(e,'block'); break; } } }
+    if(kid.st==='strike'&&kid.t<0.1&&dist<56){ if(!e.reacted){ e.reacted=true; if(Math.random()<e.block){ setSt(e,'block'); break; } } }
     else if(kid.st!=='strike') e.reacted=false;
     if(e.cool<=0){
-      if(dist>34){ if(safeAhead(e,e.dir)) setSt(e,'advance'); e.cool=0.12+Math.random()*0.25; }
-      else if(dist<19){ if(safeAhead(e,-e.dir)) setSt(e,'retreat'); e.cool=0.3; }
+      // Fencing measure: en-garde blades reach ~34px, lunge ~48px. Hold
+      // 40..52 so blades cross in the middle instead of hilts touching chests.
+      // Unarmed kid can't fence — fall back to the old brawl measure so
+      // punches (range ~24) can still connect.
+      const farD=(kid&&kid.sword)?52:34, nearD=(kid&&kid.sword)?40:19;
+      if(dist>farD){ if(safeAhead(e,e.dir)) setSt(e,'advance'); e.cool=0.12+Math.random()*0.25; }
+      else if(dist<nearD){ if(safeAhead(e,-e.dir)) setSt(e,'retreat'); e.cool=0.3; }
       else if(Math.random()<e.aggr){ setSt(e,'strike'); SFX.swish(); e.cool=e.react+Math.random()*0.55; }
       else { e.cool=0.2+Math.random()*0.35; if(Math.random()<0.25&&safeAhead(e,-e.dir)) setSt(e,'retreat'); }
     }
@@ -1975,7 +1997,7 @@ function guardUpdate(e,dt){
   case 'advance': if(e.t<0.2) moveX(e,e.dir*50*dt); if(e.t>0.28) setSt(e,'engarde'); break;
   case 'retreat': if(e.t<0.2) moveX(e,-e.dir*50*dt); if(checkFall(e)) break; if(e.t>0.28) setSt(e,'engarde'); break;
   case 'strike': if(!e.hitDone&&e.t>0.32){ e.hitDone=true; resolveStrike(e); } if(e.t>0.6) setSt(e,'engarde'); break;
-  case 'block': if(e.t>0.34){ if(Math.random()<0.45&&sees&&dist<40){ setSt(e,'strike'); SFX.swish(); } else setSt(e,'engarde'); } break;
+  case 'block': if(e.t>0.34){ const riposteD=(kid&&kid.sword)?52:40; if(Math.random()<0.45&&sees&&dist<riposteD){ setSt(e,'strike'); SFX.swish(); } else setSt(e,'engarde'); } break;
   case 'hurt': if(e.t<0.15) moveX(e,-e.dir*60*dt); if(checkFall(e)) break; if(e.t>0.4) setSt(e,'engarde'); break;
   case 'stagger': if(e.t<0.15) moveX(e,-e.dir*40*dt); if(checkFall(e)) break; if(e.t>0.5) setSt(e,'engarde'); break;
   }
@@ -2375,6 +2397,13 @@ function debugGive(type){
   const it={c,r,type}; items.push(it);
   return tryPickup(kid);
 }
+function debugSpawn(type){
+  // Drop the item at the kid's feet without starting the pickup, so the
+  // drink/sword demo waits for the player to press X.
+  const c=colOf(kid.x), r=rowOf(kid.y);
+  const it={c,r,type}; items.push(it);
+  return it;
+}
 function applyDebugScene(){
   if(!DEBUG) return;
   if(DEBUG==='pendulum'){
@@ -2383,8 +2412,8 @@ function applyDebugScene(){
     showMsg('WAIT AT THE BRASS MARK. RUN BEHIND THE SWINGING AXE',60,'#ffd860');
   } else if(DEBUG==='drink'||DEBUG==='potion'){
     debugSpot(2,1,1); debugWait=0;
-    debugGive('p');
-    showMsg('DEBUG drink — looping potion animation (R restarts scene)',60,'#ffd860');
+    debugSpawn('p');
+    showMsg('DEBUG drink — press X to drink (R restarts scene)',60,'#ffd860');
   } else if(DEBUG==='sword'||DEBUG==='pickup'){
     debugSpot(2,1,1); debugWait=0;
     debugGive('s');
@@ -2405,10 +2434,18 @@ function applyDebugPreset(){
 }
 function debugLoop(dt){
   if(!DEBUG||gameState!=='play'||paused) return;
-  if(DEBUG==='drink'||DEBUG==='potion'||DEBUG==='sword'||DEBUG==='pickup'){
+  if(DEBUG==='drink'||DEBUG==='potion'){
+    // Manual demo: keep a potion by the kid's feet, but wait for X instead
+    // of auto-playing. R restarts the scene.
+    if(alive(kid)){
+      const r=rowOf(kid.y);
+      const has=items.some(i=>(i.type==='p'||i.type==='P')&&i.r===r&&Math.abs(i.c*TW+16-kid.x)<30);
+      if(!has&&(kid.st==='stand')) debugSpawn('p');
+    }
+  } else if(DEBUG==='sword'||DEBUG==='pickup'){
     if(kid.st==='stand'&&alive(kid)){
       debugWait+=dt;
-      if(debugWait>0.9){ debugWait=0; debugGive((DEBUG==='drink'||DEBUG==='potion')?'p':'s'); }
+      if(debugWait>0.9){ debugWait=0; debugGive('s'); }
     } else debugWait=0;
   } else if(DEBUG==='fight'||DEBUG==='combat'||DEBUG==='guard'||DEBUG==='enemy'){
     const gd=guards[0];
