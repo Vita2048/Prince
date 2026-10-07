@@ -1466,15 +1466,33 @@ function drawHand(wrist,elbow,C,dir,mode='relaxed',grip=0){
     finger([[-.75,.1],[-1.5,-.8],[-1.4,-1.45],[-.95,-1.25]],.52);
     line(g,[[-.4,-.6],[.45,-.8]],C.skinD,.15);
   }else{
-    g.rotate(Math.atan2(wrist[1]-elbow[1],wrist[0]-elbow[0])-Math.PI/2);g.scale(dir,1);
+    // Mirror the entire hand across the forearm, keeping its wrist attached.
+    g.rotate(Math.atan2(wrist[1]-elbow[1],wrist[0]-elbow[0])-Math.PI/2);g.scale(-dir,1);
     const closed=mode==='grip'||mode==='fist',reach=mode==='reach';
-    shape(g,[[-.7,-.45],[.75,-.45],[1.05,.7],[.8,1.65],[-.8,1.7],[-1,.55]],skin,'#50382d',.22);
-    for(let i=0;i<4;i++){const x=-.75+i*.5,len=[1.25,1.65,1.5,1.05][i];
-      if(closed)finger([[x,1],[x+.15,1.95],[x-.16,2.15],[x-.25,1.35]],.48);
-      else finger([[x,1.25],[x+(reach?(i-1.5)*.14:.12),1.6+len*.55],[x+(reach?(i-1.5)*.23:.32),1.6+len]],.42);
+    if(closed){
+      shape(g,[[-.7,-.45],[.75,-.45],[1.05,.7],[.8,1.65],[-.8,1.7],[-1,.55]],skin,'#50382d',.22);
+      for(let i=0;i<4;i++){const x=-.75+i*.5;finger([[x,1],[x+.15,1.95],[x-.16,2.15],[x-.25,1.35]],.48);}
+      finger([[-.9,.4],[-1.5,1.05],[-1.3,1.7],[-.6,1.35]],.54);
+      line(g,[[-.45,.4],[.2,.65],[.55,.4]],C.skinD,.16);
+    }else{
+      // Open hand: tapered fingers and a continuous thumb web, not a curled hook.
+      for(let i=0;i<4;i++){
+        const x=-.72+i*.49,base=1.22,len=[1.35,1.6,1.42,1.02][i];
+        const spread=reach?(i-1.5)*.2:(i-1.5)*.09,tip=x+spread;
+        // Enlarge each finger around its root so it stays attached to the palm.
+        g.save();g.translate(x,base);g.scale(1.33,1.33);g.translate(-x,-base);
+        shape(g,[[x-.23,base],[x+.23,base],[tip+.18,base+len-.25],
+          [tip+.1,base+len],[tip-.08,base+len+.03],[tip-.17,base+len-.14]],C.skin,'#50382d',.15);
+        line(g,[[tip-.11,base+len*.6],[tip+.12,base+len*.6+.025]],C.skinD,.09);
+        g.restore();
+      }
+      shape(g,[[-.65,-.45],[.65,-.45],[.79,.25],[.94,.95],[.9,1.43],
+        [.43,1.57],[-.12,1.62],[-.85,1.45],[-.94,.91],
+        [-1.13,1.04],[-1.38,1.42],[-1.67,1.62],[-1.86,1.59],
+        [-1.94,1.47],[-1.78,1.28],[-1.52,.91],[-1.27,.57],[-.91,.22]],skin,'#50382d',.17);
+      line(g,[[-.94,.91],[-.88,.55],[-.74,.32]],C.skinD,.1);
+      line(g,[[-1.67,1.35],[-1.53,1.44]],C.skinD,.09);
     }
-    finger([[-.9,.4],[-1.5,1.05],[-1.3,closed?1.7:2],[-.6,closed?1.35:1.9]],.54);
-    line(g,[[-.45,.4],[.2,.65],[.55,.4]],C.skinD,.16);
   }
   g.restore();
 }
