@@ -1381,8 +1381,8 @@ function skeleton(e,p){
   const V=(o,a,l)=>[o[0]+Math.sin(a*DEG)*d*l, o[1]+Math.cos(a*DEG)*l];
   const U=(o,a,l)=>[o[0]+Math.sin(a*DEG)*d*l, o[1]-Math.cos(a*DEG)*l];
   const S={d,hip};
-  S.kF=V(hip,p.fT,KB.th); S.aF=V(S.kF,p.fS,KB.sh); S.tF=V(S.aF,clamp(p.fS+90,15,120),KB.ft);
-  S.kB=V(hip,p.bT,KB.th); S.aB=V(S.kB,p.bS,KB.sh); S.tB=V(S.aB,clamp(p.bS+90,15,120),KB.ft);
+  S.kF=V(hip,p.fT,KB.th); S.aF=V(S.kF,p.fS,KB.sh); S.tF=V(S.aF,p.fS+90,KB.ft);
+  S.kB=V(hip,p.bT,KB.th); S.aB=V(S.kB,p.bS,KB.sh); S.tB=V(S.aB,p.bS+90,KB.ft);
   applyFootContacts(S,e);
   S.neck=U(hip,p.tor,KB.tl); S.sh=U(hip,p.tor,KB.tl-2.5); S.shB=[S.sh[0]-d*1,S.sh[1]];
   S.head=U(S.neck,p.tor+p.head,3.6);
@@ -1587,6 +1587,22 @@ function tailoredLimb(a,b,w0,w1,color,folds=false,material=null){
   if(folds){for(let k=0;k<4;k++){const yy=len*(.25+k*.18);line(g,[[-w0*.34,yy],[w0*.08,yy+1.1],[w0*.3,yy+.3]],'rgba(26,32,39,.24)',.25);line(g,[[-w0*.27,yy+.4],[w0*.06,yy+1.4]],'rgba(255,239,203,.25)',.18);}}
   g.restore();
 }
+function limbJoint(a,j,b,width,color,cloth=false){
+  const u=[j[0]-a[0],j[1]-a[1]],v=[b[0]-j[0],b[1]-j[1]];
+  const lu=Math.hypot(...u)||1,lv=Math.hypot(...v)||1;
+  const bend=Math.acos(clamp((u[0]*v[0]+u[1]*v[1])/(lu*lv),-1,1));
+  if(bend<.12)return;
+  const r=width*.48,base=[parseInt(color.slice(1,3),16),parseInt(color.slice(3,5),16),parseInt(color.slice(5,7),16)];
+  g.save();g.translate(j[0],j[1]);g.rotate(Math.atan2(v[1],v[0])-Math.PI/2);
+  // A shared rounded joint covers both end caps, including the inside wedge.
+  g.beginPath();g.arc(0,0,r,0,Math.PI*2);
+  g.fillStyle=gradient(g,-r,0,r*2,0,[[0,rgb(shade(base,-22))],[.4,rgb(shade(base,24))],[1,rgb(shade(base,-12))]]);g.fill();
+  if(cloth){
+    g.beginPath();g.moveTo(-r*.65,-.15);g.quadraticCurveTo(0,r*.48,r*.65,.05);
+    g.strokeStyle='rgba(92,77,55,.38)';g.lineWidth=.14;g.stroke();
+  }
+  g.restore();
+}
 function princeLimb(a,b,w0,w1,color,folds=false,material=null){
   if(color==='#34373b')return tailoredLimb(a,b,w0,w1,color,folds,material);
   const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);
@@ -1638,9 +1654,9 @@ function princeLimb(a,b,w0,w1,color,folds=false,material=null){
   }
   g.restore();g.restore();
 }
-function princeBoot(ankle,toe,color){
-  const d=toe[0]>=ankle[0]?1:-1,reach=Math.abs(toe[0]-ankle[0]);
-  g.save();g.translate(ankle[0],ankle[1]);g.scale(d,1);g.rotate(Math.atan2(toe[1]-ankle[1],reach||.01));
+function princeBoot(ankle,toe,color,facing=1){
+  const d=facing,reach=Math.hypot(toe[0]-ankle[0],toe[1]-ankle[1]);
+  g.save();g.translate(ankle[0],ankle[1]);g.scale(d,1);g.rotate(Math.atan2(toe[1]-ankle[1],(toe[0]-ankle[0])*d));
   g.beginPath();g.moveTo(-1.2,-2.75);g.quadraticCurveTo(.1,-3.08,1.27,-2.62);
   g.lineTo(1.1,-.54);g.quadraticCurveTo(2,-.04,reach+.42,.23);
   g.quadraticCurveTo(reach+1.03,.54,reach+.68,1.12);g.quadraticCurveTo(2,1.62,-1.3,1.3);g.closePath();
@@ -1653,8 +1669,8 @@ function princeBoot(ankle,toe,color){
   shape(g,[[.43,-1.13],[.71,-1.13],[.71,-.86],[.43,-.86]],'#493527');
   g.restore();
 }
-function drawBoot(ankle,toe,color,material=null){
-  if(material==='leather')return princeBoot(ankle,toe,color);
+function drawBoot(ankle,toe,color,material=null,facing=1){
+  if(material==='leather')return princeBoot(ankle,toe,color,facing);
   tailoredLimb([ankle[0],ankle[1]-2.6],ankle,3.1,2.8,color,false,material);
   tailoredLimb(ankle,[toe[0]+(toe[0]>ankle[0]?.5:-.5),toe[1]],2.6,1.25,color,false,material);
   line(g,[[ankle[0]-1,ankle[1]+1],[toe[0],toe[1]+.65]],'#ba9e72',.35);
@@ -1788,22 +1804,22 @@ function drawDetailedPerson(e,p,t,C,guard){
   const bodyLimb=princeLimb;
   const cloth=guard?C.pants:'#d1c5a5';
   const handMode=(guard||e.armed||p.showSword||p.showPotion)?'grip':e.st==='punch'?'fist':['air','fall','rise','teeter'].includes(e.st)?'reach':'relaxed';
-  bodyLimb(S.shB,S.eB,3,2.5,C.skinD);bodyLimb(S.eB,S.hB,2.6,1.4,C.skinD);
+  bodyLimb(S.shB,S.eB,3,2.5,C.skinD);bodyLimb(S.eB,S.hB,2.6,1.4,C.skinD);limbJoint(S.shB,S.eB,S.hB,2.6,C.skinD);
   if(!S.gripB)drawHand(S.hB,S.eB,{...C,skin:C.skinD},d,'relaxed',0,true);
-  bodyLimb(hip,S.kB,5,4.2,guard?C.pants:'#9f967f',true,guard?null:'linen');bodyLimb(S.kB,S.aB,4.2,2.3,guard?C.pants:'#a59b83',true,guard?null:'linen');drawBoot(S.aB,S.tB,'#40382e','leather');
+  bodyLimb(hip,S.kB,5,4.2,guard?C.pants:'#9f967f',true,guard?null:'linen');bodyLimb(S.kB,S.aB,4.2,2.3,guard?C.pants:'#a59b83',true,guard?null:'linen');limbJoint(hip,S.kB,S.aB,4.2,guard?C.pants:'#a59b83',true);drawBoot(S.aB,S.tB,'#40382e','leather',d);
   const release=['stop','runTurn','land','landHard'].includes(e.st)?Math.exp(-e.t*7)*3:0;
   const stride=e.st==='run'?Math.sin((e.runPh||0)*Math.PI*2-1.2)*1.2:Math.sin(t*2.6-e.x*.03)*.35;
   const tailX=hip[0]-d*(5+Math.min(5,Math.abs(e.vx||0)*.03)+release);
   shape(g,[[hip[0]-d*2,hip[1]-1],[tailX,hip[1]+3.5+stride],[tailX+d*1.5,hip[1]+7+stride*.6],[hip[0],hip[1]+2]],'#743039','#b16b55',.2);
   if(e.sword&&!e.armed&&!guard){bodyLimb([hip[0],hip[1]], [hip[0]-d*9,hip[1]+9],2.3,1.6,'#34373b');for(const f of [.1,.85]){jewel(g,hip[0]-d*9*f,hip[1]+9*f,.85,'#a98c57');}}
-  bodyLimb(hip,S.kF,5.6,4.5,cloth,true,guard?null:'linen');bodyLimb(S.kF,S.aF,4.5,2.3,cloth,true,guard?null:'linen');drawBoot(S.aF,S.tF,'#5b4935','leather');
+  bodyLimb(hip,S.kF,5.6,4.5,cloth,true,guard?null:'linen');bodyLimb(S.kF,S.aF,4.5,2.3,cloth,true,guard?null:'linen');limbJoint(hip,S.kF,S.aF,4.5,cloth,true);drawBoot(S.aF,S.tF,'#5b4935','leather',d);
   if(guard){const mid=[(S.kB[0]+S.kF[0])/2,(S.kB[1]+S.kF[1])/2];
     shape(g,[[hip[0]-4,hip[1]],[hip[0]+4,hip[1]],[mid[0]+5,mid[1]+1],[mid[0]-5,mid[1]+1]],gradient(g,hip[0]-5,0,10,0,[[0,C.robeD],[.45,C.robe],[1,C.robeD]]),'#18222b',.35);
     for(let k=0;k<4;k++)line(g,[[hip[0]-3+k*2,hip[1]+1],[mid[0]-3+k*2,mid[1]]],k%2?'#bca070':C.robeD,.35);
     line(g,[[mid[0]-5,mid[1]+.7],[mid[0]+5,mid[1]+.7]],'#c2a36b',.7);
   }
   bodyLimb(S.neck,S.head,2.4,2.4,C.skinD);dressedTorso(S,C,guard,t);portrait(S,p,C,t,guard);
-  bodyLimb(S.sh,S.eF,3.25,2.5,C.skin);bodyLimb(S.eF,S.hF,2.8,1.65,C.skin);
+  bodyLimb(S.sh,S.eF,3.25,2.5,C.skin);bodyLimb(S.eF,S.hF,2.8,1.65,C.skin);limbJoint(S.sh,S.eF,S.hF,2.8,C.skin);
   // Pauldron, leather vambrace, straps, engraved cuff and articulated fingers.
   const sleeve=[lerp(S.sh[0],S.eF[0],.4),lerp(S.sh[1],S.eF[1],.4)];bodyLimb(S.sh,sleeve,4.1,3.4,guard?'#7d887f':'#31586b',false,guard?'guardSteel':'steel');
   const wrist=[lerp(S.eF[0],S.hF[0],.42),lerp(S.eF[1],S.hF[1],.42)],cuff=[lerp(S.eF[0],S.hF[0],.78),lerp(S.eF[1],S.hF[1],.78)];bodyLimb(wrist,cuff,2.9,2.1,guard?'#727d75':'#5c4333',false,guard?'guardSteel':'leather');
@@ -1985,10 +2001,23 @@ function hurtKid(n,why){
 function killKid(why){
   if(kid.st==='dead') return;
   kid.hp=0; kid.deathBy=why; kid.armed=false; kid.vx=0; setSt(kid,'dead'); deaths++;
+  kid.vy=Math.max(0,kid.vy||0);kid.hang=null;kid.climb=null;
   if(why==='chomp'||why==='sword'||why==='spikes'||why==='pendulum') blood(kid.x,kid.y-24,-kid.dir,18);
   setTimeout(()=>SFX.death(),350);
 }
 function flash(col){ flashT=0.25; flashCol=col; }
+function settleDeadBody(e,dt){
+  if(e.deathBy==='spikes')return;
+  const oy=e.y;
+  e.vy=Math.min(Math.max(0,e.vy||0)+GRAV*dt,430);
+  const ny=oy+e.vy*dt;
+  // Sweep to the next supporting floor without reviving the character through landed().
+  for(let r=Math.max(0,rowOf(oy)-1);r<=Math.min(LH-1,rowOf(ny)+1);r++){
+    const fy=floorY(r);
+    if(fy>=oy-.01&&fy<=ny&&ground(colOf(e.x),r)){e.y=fy;e.vy=0;return;}
+  }
+  e.y=Math.min(ny,LH*TH+120);
+}
 function atDoor(k){ return door&&door.open>0.95&&rowOf(k.y)===door.r&&Math.abs(k.x-(door.c*TW+16))<18; }
 function nearBlade(k){ const c=colOf(k.x), r=rowOf(k.y); for(const cc of [c-1,c,c+1]) if(tile(cc,r)==='/'&&Math.abs(k.x-(cc*TW+18))<22) return true; return Object.values(pendulums).some(p=>p.r===r&&Math.abs(k.x-(p.c*TW+16))<PENDULUM.reach+16); }
 function spikeCheck(k){
@@ -2142,7 +2171,7 @@ function kidUpdate(dt){
     else { const u=Math.min(1,(k.t-0.4)/1.6); k.x=cx+u*12; k.y=floorY(door.r)-u*32; }
     if(k.t>2.2&&gameState==='play'){ gameState='win'; }
     break; }
-  case 'dead': break;
+  case 'dead': settleDeadBody(k,dt);break;
   }
 }
 function curve(pts,t){ for(let i=1;i<pts.length;i++) if(t<=pts[i][0]){ const [a,va]=pts[i-1],[b,vb]=pts[i]; const u=(t-a)/(b-a); return va+(vb-va)*u*u*(3-2*u); } return pts[pts.length-1][1]; }
@@ -2196,8 +2225,8 @@ function safeAhead(e,s){
 }
 function guardUpdate(e,dt){
   e.t+=dt;
-  if(e.st==='dead') return;
-  if(e.st==='die'){ if(e.t>1) setSt(e,'dead'); return; }
+  if(e.st==='dead'){settleDeadBody(e,dt);return;}
+  if(e.st==='die'){settleDeadBody(e,dt);if(e.t>1) setSt(e,'dead'); return; }
   if(e.st==='fall'){ airPhysics(e,dt,false); return; }
   const kidOk=alive(kid)&&GROUND_ST.has(kid.st);
   const dx=kid.x-e.x, dist=Math.abs(dx);
