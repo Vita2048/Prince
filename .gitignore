@@ -5,4 +5,8 @@
 /Prince.before-cinematic.html
 /artifacts
 /GRAPHICS_REVIEW.md
-/verify-graphics.cjs 
+/verify-graphics.cjs
+*.webm
+/tools/capture/node_modules/
+/tools/capture/out/ 
+/tools

@@ -1854,7 +1854,7 @@ const GROUND_ST=new Set(['stand','turn','run','stop','runTurn','bump','step','te
 const keys={}, pressed={};
 const KEYMAP={KeyA:'left',ArrowLeft:'left',KeyD:'right',ArrowRight:'right',KeyW:'up',ArrowUp:'up',KeyS:'down',ArrowDown:'down',
   Space:'jump',KeyX:'take',KeyJ:'strike',KeyK:'block',ShiftLeft:'shift',ShiftRight:'shift',KeyR:'restart',KeyM:'mute',KeyP:'pause',
-  Escape:'menu',Enter:'enter',KeyL:'strike'};
+  Escape:'menu',Enter:'enter',KeyL:'strike',F9:'record',F10:'recordDir',F8:'quality'};
 let kid, guards=[], particles=[], cam={rx:0,ry:0}, shakeT=0, msg={text:'',t:0,col:'#e8e2cc'}, gameState='title', paused=false;
 let inProgress=false, titleSel=0, pauseSel=0;
 let clock=0, playTime=0, deaths=0, checkpoint=null, pendingCP=false, themeStarted=false, flashT=0, flashCol='255,0,0';
@@ -2507,6 +2507,12 @@ function drawHUD(){
   if(kid.st==='dead'&&kid.t>1.4)hint='Press Space to rise again';
   const lines=fittedLines(hint,148,5.1);const top=VIEWH+13-lines.length*3.1;
   lines.forEach((line,i)=>label(line,160,top+i*6.2,5.1,'#d9dfdf','center'));
+  if(recState){
+    const s=Math.floor((performance.now()-recState.t0)/1000);
+    const mm=String(Math.floor(s/60)).padStart(2,'0'), ss=String(s%60).padStart(2,'0');
+    if(Math.floor(performance.now()/500)%2===0){ g.fillStyle='#ff3b30'; g.beginPath(); g.arc(9,7,2.4,0,Math.PI*2); g.fill(); }
+    label('REC '+mm+':'+ss+' '+recPreset().fps+'fps',15,4.6,4.2,'#ff8a80');
+  }
 }
 
 function palaceCorners(x,y,w,h,alpha=1){
@@ -2583,7 +2589,7 @@ function renderTitle(){
     g.save(); g.globalAlpha=.25+.2*pulse; g.strokeStyle='#ffe9b0'; g.lineWidth=1; g.beginPath(); g.roundRect(bx-1.2,by-1.2,bw+2.4,bh+2.4,5); g.stroke(); g.restore();
     g.save();g.font='600 5.5px "Segoe UI", Arial, sans-serif';g.textBaseline='middle';g.textAlign='center';g.fillStyle='rgba(60,40,15,.55)';g.fillText('SPACE   Begin your escape',160,175+17/2+1);g.fillStyle='#1a2432';g.fillText('SPACE   Begin your escape',160,175+17/2+.3);g.restore();
   }
-  label('ESC  Pause     R  Restart     M  Sound',160,198,4.2,'#8b9dab','center');
+  label('ESC  Pause     R  Restart     M  Sound     F8  Quality     F9  Rec',160,198,4.2,'#8b9dab','center');
 }
 
 function drawMenu(opts,sel,y,gap){
@@ -2626,6 +2632,113 @@ function resize(){ const dpr=Math.min(2,window.devicePixelRatio||1); screen.widt
 addEventListener('resize',resize); resize();
 
 /* ============================================================
+   NATIVE-RES RECORDING — F9 toggles, F10 picks a folder.
+   Captures `buf` (1920x1296 native), not the scaled screen canvas.
+   A page cannot write to disk silently: without a picked folder the clip
+   downloads to the browser's Downloads folder; after F10 (folder picker)
+   clips are written straight into the chosen folder (e.g. the game dir).
+   Note: under file:// the canvas is tainted (icon.png) and captureStream
+   throws — serve over http://localhost instead (e.g. `npx serve .`).
+   ============================================================ */
+let recState=null, recDirHandle=null, recAudioDest=null;
+/* Quality presets: encoding 60fps VP9 in software is the dominant cost on
+ * slow machines — 30fps roughly halves it. Resolution always stays native
+ * (1920x1296); only frame rate, bitrate and codec change. F8 cycles. */
+const REC_PRESETS=[
+  {name:'HIGH 60fps',fps:60,vbr:14000000,codecs:['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']},
+  {name:'MED 30fps', fps:30,vbr:8000000, codecs:['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']},
+  {name:'LOW 30fps', fps:30,vbr:5000000, codecs:['video/webm;codecs=vp8,opus','video/webm']},
+];
+let recQuality=1;
+function recPreset(){ return REC_PRESETS[recQuality%REC_PRESETS.length]; }
+function recCycleQuality(){
+  if(recState){ showMsg('STOP RECORDING BEFORE CHANGING QUALITY',2.5,'#ff9aa8'); return; }
+  recQuality=(recQuality+1)%REC_PRESETS.length;
+  console.log('[rec] quality: '+recPreset().name);
+  showMsg('REC QUALITY: '+recPreset().name,2,'#d9dfdf');
+}
+function recMime(){
+  for(const m of recPreset().codecs){
+    try{ if(window.MediaRecorder&&MediaRecorder.isTypeSupported(m)) return m; }catch(e){}
+  }
+  return '';
+}
+function recStamp(){
+  try{ return new Date().toISOString().replace(/[:.]/g,'-').slice(0,19); }
+  catch(e){ return String(Date.now()); }
+}
+function recStart(){
+  if(recState) return;
+  if(typeof buf==='undefined'||!buf||!buf.captureStream){ showMsg('RECORDING NOT SUPPORTED IN THIS BROWSER',3,'#ff9aa8'); return; }
+  const mime=recMime();
+  let stream=null;
+  const preset=recPreset();
+  try{ stream=buf.captureStream(preset.fps); }
+  catch(e){ showMsg('RECORD BLOCKED: SERVE OVER HTTP, NOT file://',4,'#ff9aa8'); return; }
+  try{
+    // Game audio (all synthesized WebAudio) joins the recording: tap the
+    // master gain into a MediaStreamDestination and mux its track with the
+    // video track. Degrades gracefully to silent/video-only if audio is
+    // unavailable (e.g. no user activation yet) — video is unaffected.
+    let tracks=stream.getVideoTracks();
+    try{
+      try{ unlockAudio(); }catch(e){}
+      if(AC&&MG){
+        if(!recAudioDest){ recAudioDest=AC.createMediaStreamDestination(); MG.connect(recAudioDest); }
+        if(AC.state==='suspended'){ try{ AC.resume().catch(()=>{}); }catch(e){} }
+        const at=recAudioDest.stream.getAudioTracks();
+        if(at&&at.length) tracks=tracks.concat(at);
+      }
+    }catch(e){ console.warn('[rec] audio tap failed, recording video-only',e); }
+    const rec=new MediaRecorder(new MediaStream(tracks),{mimeType:mime||undefined,videoBitsPerSecond:preset.vbr,audioBitsPerSecond:128000});
+    const st={rec,chunks:[],t0:performance.now(),mime};
+    rec.ondataavailable=e=>{ if(e.data&&e.data.size) st.chunks.push(e.data); };
+    rec.onstop=()=>{ recFinalize(st).catch(err=>{ console.warn('[rec] save failed',err); showMsg('RECORD SAVE FAILED',3,'#ff9aa8'); }); };
+    rec.start(250);
+    recState=st;
+    console.log('[rec] started '+buf.width+'x'+buf.height+' '+(mime||'default')+' ['+preset.name+']');
+    showMsg('● RECORDING  (F9 TO STOP)',2,'#ff8a80');
+  }catch(e){ showMsg('RECORD FAILED TO START',3,'#ff9aa8'); }
+}
+function recStop(){
+  const st=recState; recState=null;
+  if(!st) return;
+  try{ st.rec.stop(); }catch(e){}
+  showMsg('SAVING CLIP…',2,'#d9dfdf');
+}
+async function recFinalize(st){
+  const blob=new Blob(st.chunks,{type:'video/webm'});
+  const secs=Math.round((performance.now()-st.t0)/1000);
+  const name='sands-of-the-sultan-'+buf.width+'x'+buf.height+'-'+recStamp()+'.webm';
+  console.log('[rec] stopped '+secs+'s, '+(blob.size/1048576).toFixed(1)+' MB -> '+name);
+  if(recDirHandle){
+    try{
+      const fh=await recDirHandle.getFileHandle(name,{create:true});
+      const w=await fh.createWritable();
+      await w.write(blob); await w.close();
+      showMsg('CLIP SAVED TO FOLDER: '+name,4,'#90ffb0');
+      return;
+    }catch(e){ console.warn('[rec] folder save failed, falling back to download',e); }
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+  showMsg('CLIP DOWNLOADED: '+name+(recDirHandle?'':'  (F10 PICKS A FOLDER)'),4,'#ffd860');
+}
+async function recPickDir(){
+  if(!window.showDirectoryPicker){ showMsg('FOLDER PICKER UNSUPPORTED — F9 SAVES TO DOWNLOADS',4,'#ff9aa8'); return; }
+  try{
+    const h=await window.showDirectoryPicker({mode:'readwrite'});
+    try{
+      if((await h.queryPermission({mode:'readwrite'}))!=='granted') await h.requestPermission({mode:'readwrite'});
+    }catch(e){}
+    recDirHandle=h;
+    console.log('[rec] folder picked, clips will save there directly');
+    showMsg('RECORDINGS WILL SAVE INTO THE CHOSEN FOLDER',4,'#90ffb0');
+  }catch(e){ /* picker cancelled — stay on downloads */ }
+}
+
+/* ============================================================
    GAME FLOW & LOOP
    ============================================================ */
 function startGame(){
@@ -2636,6 +2749,25 @@ function startGame(){
   checkpoint={...at,sword:false,maxHp:3}; playTime=0; deaths=0; paused=false;
   stopMusic(); inProgress=true; gameState='play'; showMsg('LEVEL 1  -  THE SULTAN\'S DUNGEON',3.5,'#ffd860');
   if(DEBUG) applyDebugScene();
+  prewarmRooms();
+}
+/* Room-entry hitch fix: a room's static canvas (~1920x1134, ~35-65ms paint
+ * plus canvas allocation) was rendered synchronously on first entry, inside
+ * render() — a visible multi-frame stall. Pre-render all rooms up front in
+ * small slices while the LEVEL banner shows, so entries are cache hits.
+ * Identical pixels: the painters are deterministic per (c,r) seed. */
+function prewarmRooms(){
+  const jobs=[];
+  for(let ry=0;ry<2;ry++)for(let rx=0;rx<5;rx++)jobs.push([rx,ry]);
+  let masksDone=false;
+  const slice=()=>{
+    try{
+      if(jobs.length){ const [rx,ry]=jobs.shift(); roomCanvas(rx,ry); distantCanvas(rx,ry); }
+      else if(!masksDone){ masksDone=true; for(const t of torches){ try{ torchMask(t); }catch(e){} } }
+    }catch(e){}
+    if(jobs.length||!masksDone) setTimeout(slice,0);
+  };
+  setTimeout(slice,0);
 }
 function respawn(){
   const cp=checkpoint, sw=kid.sword, mh=kid.maxHp;
@@ -2741,6 +2873,9 @@ function update(dt){
 function step(dt){
   clock+=dt;
   if(pressed.mute){ muted=!muted; if(MG) MG.gain.value=muted?0:0.5; if(muted) stopMusic(); else if(gameState==='title') startMusic(); }
+  if(pressed.recordDir){ recPickDir(); }
+  if(pressed.quality){ recCycleQuality(); }
+  if(pressed.record){ recState?recStop():recStart(); }
   if(gameState==='title'){
     if(inProgress&&(pressed.up||pressed.down)) titleSel=1-titleSel;
     if(pressed.jump||pressed.enter){ if(inProgress&&titleSel===0){ stopMusic(); gameState='play'; paused=false; } else startGame(); }
